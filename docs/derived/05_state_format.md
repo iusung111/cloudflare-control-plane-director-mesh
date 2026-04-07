@@ -71,9 +71,32 @@ Queue items are stored in `.control-plane/queues/<queueName>/<itemId>.json`.
 }
 ```
 
-## Dedup and Conflict Keys
-- Dedup check: Check if `.control-plane/events/*/*/*/<commandId>*` exists. (Optimization: use a summary index if needed).
-- Conflict check: Check if any active lease exists for the same resource.
+## State Transitions
+Commands follow a deterministic path:
+1.  **RECEIVED:** External input validated.
+2.  **QUEUED (Optional):** Resource conflict detected; placed in the conflict queue.
+3.  **REJECTED:** Validation, authority, or guardrail check failed.
+4.  **EMITTED:** Command cleared for execution; side-effect request created.
+5.  **COMPLETED:** Side-effect execution reported success.
+
+| Current Type | Next Type | Condition |
+| :--- | :--- | :--- |
+| (None) | RECEIVED | External request arrival |
+| RECEIVED | QUEUED | `conflictKey` match with active lease |
+| RECEIVED | REJECTED | `authority` or `guardrail` fail |
+| RECEIVED | EMITTED | All checks pass |
+| EMITTED | COMPLETED | Side-effect executor returns `success` |
+| EMITTED | REJECTED | Side-effect executor returns `failure` |
+
+## Idempotency Rules
+*   **Dedup Key:** Each command must include a client-generated `dedupKey`. 
+*   **Storage-based check:** Before processing, the Mission Kernel checks for an existing event with the same `dedupKey`.
+*   **Deterministic eventId:** `eventId` is derived from `commandId` and `status` to prevent duplicate file creation.
+
+## Conflict Resolution
+*   **Conflict Key:** Granular identification of the resource being modified (e.g., `repo:branch:path`).
+*   **Lease Locking:** Only one session can hold an "active" lease on a specific `conflictKey`.
+*   **Queueing:** When a conflict is detected, the command is moved to the `conflict` queue and its status becomes `queued`.
 
 ## What this file does not cover
 - Cloudflare KV metadata mapping

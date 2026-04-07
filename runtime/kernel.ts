@@ -131,7 +131,7 @@ export class MissionKernel {
     request: CommandRequest,
     reason: string,
   ): Promise<{ event: MissionEvent; state: DerivedState }> {
-    const event = this.emitEvent(request, "COMMAND_REJECTED", "queued", reason);
+    const event = this.emitEvent(request, "COMMAND_QUEUED", "queued", reason);
     await this.deps.store.appendEvent(event);
 
     return {

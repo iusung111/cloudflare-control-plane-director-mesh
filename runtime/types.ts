@@ -47,7 +47,7 @@ export interface ResourceScope {
 export interface MissionEvent {
   eventId: string;
   commandId: string;
-  type: string;
+  type: "COMMAND_RECEIVED" | "COMMAND_REJECTED" | "COMMAND_QUEUED" | "COMMAND_EMITTED" | "COMMAND_COMPLETED";
   status: CommandStatus;
   reason?: string;
   resource: ResourceScope;
