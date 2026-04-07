@@ -8,13 +8,15 @@ import {
 } from "./types";
 
 export interface RuntimeStore {
-  hasDedup(key: string): Promise<boolean>;
-  hasConflict(key: string, resource: ResourceScope): Promise<boolean>;
+  hasDedup(dedupKey: string): Promise<boolean>;
+  saveDedup(dedupKey: string, commandId: string): Promise<void>;
+  
+  hasActiveLock(resource: ResourceScope, exceptLeaseId?: string): Promise<boolean>;
+  
   appendEvent(event: MissionEvent): Promise<void>;
 
   getSession(sessionId: string): Promise<Session | null>;
   getLease(leaseId: string): Promise<Lease | null>;
-  hasActiveLock(resource: ResourceScope, exceptLeaseId?: string): Promise<boolean>;
   saveLease(lease: Lease): Promise<void>;
 
   list(queue: QueueType): Promise<QueueItem[]>;
@@ -23,32 +25,22 @@ export interface RuntimeStore {
 }
 
 export class InMemoryRuntimeStore implements RuntimeStore {
-  private readonly dedupKeys = new Set<string>();
-  private readonly conflictKeys = new Map<string, ResourceScope>();
+  private readonly dedupKeys = new Map<string, string>(); // dedupKey -> commandId
   private readonly events: MissionEvent[] = [];
   private readonly sessions = new Map<string, Session>();
   private readonly leases = new Map<string, Lease>();
   private readonly queues = new Map<string, QueueItem[]>();
 
-  async hasDedup(key: string): Promise<boolean> {
-    return this.dedupKeys.has(key);
+  async hasDedup(dedupKey: string): Promise<boolean> {
+    return this.dedupKeys.has(dedupKey);
   }
 
-  async hasConflict(key: string, resource: ResourceScope): Promise<boolean> {
-    const existing = this.conflictKeys.get(key);
-    if (!existing) {
-      return false;
-    }
-
-    return this.sameResource(existing, resource);
+  async saveDedup(dedupKey: string, commandId: string): Promise<void> {
+    this.dedupKeys.set(dedupKey, commandId);
   }
 
   async appendEvent(event: MissionEvent): Promise<void> {
     this.events.push(event);
-    this.dedupKeys.add(event.commandId);
-    if (event.resource.repo) {
-      this.conflictKeys.set(event.commandId, event.resource);
-    }
   }
 
   async getSession(sessionId: string): Promise<Session | null> {
@@ -71,7 +63,6 @@ export class InMemoryRuntimeStore implements RuntimeStore {
         return true;
       }
     }
-
     return false;
   }
 
@@ -95,12 +86,13 @@ export class InMemoryRuntimeStore implements RuntimeStore {
     }
   }
 
+  // --- Helpers for Test/Seed ---
   seedSession(session: Session): void {
     this.sessions.set(session.sessionId, session);
   }
 
   getEvents(): MissionEvent[] {
-    return this.events.slice();
+    return [...this.events];
   }
 
   private sameResource(left: ResourceScope, right: ResourceScope): boolean {

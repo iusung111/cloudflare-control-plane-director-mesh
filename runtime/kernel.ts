@@ -7,8 +7,9 @@ import {
 } from "./types";
 
 export interface KernelStore {
-  hasDedup(key: string): Promise<boolean>;
-  hasConflict(key: string, resource: ResourceScope): Promise<boolean>;
+  hasDedup(dedupKey: string): Promise<boolean>;
+  saveDedup(dedupKey: string, commandId: string): Promise<void>;
+  hasActiveLock(resource: ResourceScope): Promise<boolean>;
   appendEvent(event: MissionEvent): Promise<void>;
 }
 
@@ -36,21 +37,28 @@ export class MissionKernel {
     await this.validate(request);
     await this.authorityCheck(request);
 
-    if (await this.dedupCheck(request)) {
+    // 1. Dedup Check (using dedupKey)
+    if (await this.deps.store.hasDedup(request.dedupKey)) {
       return this.reject(request, "duplicate_command");
     }
 
-    if (await this.conflictCheck(request)) {
+    // 2. Conflict Check (using conflictKey/resource)
+    if (await this.deps.store.hasActiveLock(request.resource)) {
       return this.queue(request, "resource_conflict");
     }
 
-    const guardrailResult = await this.guardrailCheck(request);
+    // 3. Guardrail Check
+    const guardrailResult = await this.deps.guardrails.allows(request);
     if (!guardrailResult.allowed) {
       return this.reject(request, guardrailResult.reason ?? "guardrail_blocked");
     }
 
+    // 4. Emit Event
     const event = this.emitEvent(request, "COMMAND_EMITTED", "emitted");
     await this.deps.store.appendEvent(event);
+    
+    // 5. Save Dedup Index (only after successful emission)
+    await this.deps.store.saveDedup(request.dedupKey, request.commandId);
 
     return {
       event,
@@ -76,18 +84,6 @@ export class MissionKernel {
     }
   }
 
-  private dedupCheck(request: CommandRequest): Promise<boolean> {
-    return this.deps.store.hasDedup(request.dedupKey);
-  }
-
-  private conflictCheck(request: CommandRequest): Promise<boolean> {
-    return this.deps.store.hasConflict(request.conflictKey, request.resource);
-  }
-
-  private guardrailCheck(request: CommandRequest): Promise<{ allowed: boolean; reason?: string }> {
-    return this.deps.guardrails.allows(request);
-  }
-
   private emitEvent(
     request: CommandRequest,
     type: MissionEvent["type"],
@@ -95,12 +91,13 @@ export class MissionKernel {
     reason?: string,
   ): MissionEvent {
     return {
-      eventId: `evt:${request.commandId}:${status}`,
+      eventId: `evt:${request.commandId}:${status}:${Date.now()}`,
       commandId: request.commandId,
       type,
       status,
       reason,
       resource: request.resource,
+      payload: request.payload,
       createdAt: new Date().toISOString(),
     };
   }

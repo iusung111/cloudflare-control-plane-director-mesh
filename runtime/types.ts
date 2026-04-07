@@ -11,7 +11,8 @@ export type CommandStatus =
   | "rejected"
   | "queued"
   | "emitted"
-  | "completed";
+  | "completed"
+  | "failed";
 
 export type SessionRole = "delivery" | "reliability" | "reviewer";
 
@@ -45,9 +46,9 @@ export interface ResourceScope {
 }
 
 export interface MissionEvent {
-  eventId: string;
-  commandId: string;
-  type: "COMMAND_RECEIVED" | "COMMAND_REJECTED" | "COMMAND_QUEUED" | "COMMAND_EMITTED" | "COMMAND_COMPLETED";
+  eventId: string; // Unique record ID (append-only)
+  commandId: string; // Identifier for the command that triggered this
+  type: "COMMAND_RECEIVED" | "COMMAND_REJECTED" | "COMMAND_QUEUED" | "COMMAND_EMITTED" | "COMMAND_COMPLETED" | "COMMAND_FAILED";
   status: CommandStatus;
   reason?: string;
   resource: ResourceScope;
@@ -83,14 +84,17 @@ export interface QueueItem {
 
 export interface CommandRequest {
   commandId: string;
-  dedupKey: string;
-  conflictKey: string;
+  dedupKey: string; // Client-provided key to prevent duplicate execution
+  conflictKey: string; // Key to identify resource contention
   authority: AuthorityLevel;
   sessionId: string;
   leaseId: string;
   resource: ResourceScope;
   action: CommandAction;
-  payload: unknown;
+  payload: {
+    explicitLive?: boolean; // For deploy_live authorization
+    [key: string]: any;
+  };
 }
 
 export interface DerivedState {

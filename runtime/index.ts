@@ -2,7 +2,7 @@ import { MissionKernel, MissionKernelDeps } from "./kernel";
 import { SessionManager } from "./session";
 import { QueueManager } from "./queue";
 import { GuardrailEngine } from "./guardrail";
-import { SideEffectExecutor, NoopHandler } from "./executor";
+import { SideEffectExecutor, NoopHandler, SideEffectRequest } from "./executor";
 import { RuntimeStore } from "./store";
 import { GitHubRuntimeStore, GitHubStoreConfig } from "./github_store";
 import { CommandRequest, MissionEvent, DerivedState } from "./types";
@@ -28,13 +28,6 @@ export class ControlPlaneRuntime {
       locks: {
         hasActiveWriter: (resource) => this.store.hasActiveLock(resource),
       },
-      deploy: {
-        hasExplicitLiveCommand: async (commandId) => {
-          // Check if there is an event with type COMMAND_RECEIVED and payload.explicitLive = true
-          // This is a placeholder. In real world, we'd check the command's original request.
-          return false; 
-        },
-      },
     });
 
     this.executor = new SideEffectExecutor({
@@ -44,6 +37,7 @@ export class ControlPlaneRuntime {
       verify_run: new NoopHandler(),
       browser_check: new NoopHandler(),
       deploy_mirror: new NoopHandler(),
+      deploy_live: new NoopHandler(), // Will be called only if guardrail passes
     });
 
     const kernelDeps: MissionKernelDeps = {
@@ -62,11 +56,66 @@ export class ControlPlaneRuntime {
     event: MissionEvent;
     state: DerivedState;
   }> {
+    // 1. Process command via Kernel
     const result = await this.kernel.processCommand(request);
 
+    // 2. Handle next actions
     if (result.state.nextAction === "emit_side_effect") {
-      // Trigger side effect asynchronously or synchronously depending on policy
-      // For now, we just log it as "emitted" in the state
+      const effectRequest: SideEffectRequest = {
+        effectId: `eff:${request.commandId}:${Date.now()}`,
+        effectType: request.action,
+        sourceEventId: result.event.eventId,
+        resource: request.resource,
+        payload: request.payload,
+        executionPolicy: {
+          retry: 1,
+          timeoutSeconds: 30,
+          idempotent: true,
+        },
+      };
+
+      try {
+        const executionResult = await this.executor.execute(effectRequest);
+        
+        // Emit completion/failure event based on execution result
+        const statusEvent: MissionEvent = {
+          eventId: `evt:${request.commandId}:${executionResult.status === "success" ? "completed" : "failed"}:${Date.now()}`,
+          commandId: request.commandId,
+          type: executionResult.status === "success" ? "COMMAND_COMPLETED" : "COMMAND_FAILED",
+          status: executionResult.status === "success" ? "completed" : "failed",
+          reason: executionResult.reason,
+          resource: request.resource,
+          payload: executionResult.output,
+          createdAt: new Date().toISOString(),
+        };
+        
+        await this.store.appendEvent(statusEvent);
+        
+        // Return refined state
+        return {
+          event: result.event,
+          state: {
+            ...result.state,
+            status: statusEvent.status,
+            lastEventId: statusEvent.eventId,
+            nextAction: "none",
+          },
+        };
+      } catch (err: any) {
+        // Log unexpected execution failure
+        const errorEvent: MissionEvent = {
+          eventId: `evt:${request.commandId}:failed:${Date.now()}`,
+          commandId: request.commandId,
+          type: "COMMAND_FAILED",
+          status: "failed",
+          reason: err.message,
+          resource: request.resource,
+          createdAt: new Date().toISOString(),
+        };
+        await this.store.appendEvent(errorEvent);
+        return { event: result.event, state: { ...result.state, status: "failed", nextAction: "escalate" } };
+      }
+
     } else if (result.state.nextAction === "queue") {
       await this.queue.put({
         itemId: `item:${request.commandId}`,

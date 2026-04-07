@@ -1,48 +1,35 @@
 # 01_current_progress
 
 ## Purpose
-This file summarizes the current implementation state for external CLI and offline work.
-Read this after `00_design_baseline.md`.
+This file summarizes the current implementation state for the Cloudflare Control Plane prototype.
 
-## Current status
-- Baseline docs and entry rules are in place
-- Session-log-refined intent doc is in place
-- Runtime core is fully implemented and wired
-- GitHub-backed store adapter is functional (via GitHub API)
-- State format (events, sessions, leases) is defined
+## Current status (Prototype Phase)
+- **Core Runtime:** Fully wired and compilable. Kernel -> Guardrail -> Executor flow is active.
+- **State Model:** Unified types defined. Role separation between `commandId`, `dedupKey`, and `eventId` is enforced.
+- **Persistence:** `GitHubRuntimeStore` implemented for audit logs, leases, and dedup indexing in GitHub.
+- **Infrastructure:** Cloudflare Worker entry point provided via Hono. TypeScript build and test suite integrated.
+- **Verification:** Unit tests covering core invariants (dedup, conflict, guardrails) are implemented and passing.
 
 ## Created docs
-- `README.md`
-- `00_design_baseline.md`
-- `01_current_progress.md`
-- `docs/derived/00_session_refined.md`
-- `docs/derived/01_overview.md`
-- `docs/derived/02_runtime_boundary.md`
-- `docs/derived/03_guardrail.md`
-- `docs/derived/04_runtime_to_code_map.md`
-- `docs/derived/05_state_format.md`
-- `docs/adr/adr_001_event_driven_control.md`
-- `docs/adr/adr_002_github_truth.md`
+- `README.md` (Updated rules)
+- `docs/derived/05_state_format.md` (Updated with transition rules)
+- `docs/adr/adr_002_github_truth.md` (Detailed)
 
-## Created runtime files
-- `runtime/types.ts` (centralized types)
-- `runtime/kernel.ts` (mission kernel)
-- `runtime/session.ts` (session and lease manager)
-- `runtime/queue.ts` (queue manager)
-- `runtime/guardrail.ts` (policy engine)
-- `runtime/executor.ts` (side effect executor)
-- `runtime/store.ts` (store interface)
-- `runtime/github_store.ts` (GitHub-backed persistence)
-- `runtime/index.ts` (runtime bootstrap entry point)
+## Created runtime/infrastructure files
+- `runtime/types.ts`: Domain models
+- `runtime/index.ts`: Wired runtime
+- `runtime/github_store.ts`: GitHub API adapter
+- `src/index.ts`: Worker entry point
+- `package.json` & `tsconfig.json`: Build system
+- `runtime/test/kernel.test.ts`: Core invariant tests
 
-## Next external CLI tasks
-- Implement real GitHub effect handlers (e.g., using Octokit)
-- Add a CLI wrapper to trigger commands from the terminal
-- Implement a dashboard or summary view for the event log
-- Add automated tests for the wired runtime
+## Next steps
+- **Real Effect Handlers:** Replace `NoopHandler` with real Octokit/GitHub API calls for `github_write`, etc.
+- **Session Broker:** Implement the logic to issue and revoke sessions/leases.
+- **CLI Wrapper:** Create a simple tool to send commands to the Worker.
+- **Retry Logic:** Enhance the executor with robust retry and error recovery.
 
 ## Working rules
-- Treat `00_design_baseline.md` as the root intent summary for CLI work
-- Use `docs/derived/00_session_refined.md` for fuller baseline context
-- All writes must pass through `GitHubRuntimeStore` to `.control-plane/`
-- Do not introduce live-deploy behaviour without explicit user command
+- All writes must go to `.control-plane/` in GitHub.
+- `deploy_live` requires `payload.explicitLive: true`.
+- One file = one role.
