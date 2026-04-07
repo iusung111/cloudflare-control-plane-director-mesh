@@ -6,7 +6,7 @@ export interface GuardrailResult {
 }
 
 export interface LockChecker {
-  hasActiveWriter(resource: ResourceScope): Promise<boolean>;
+  hasActiveWriter(resource: ResourceScope, exceptLeaseId?: string): Promise<boolean>;
 }
 
 export class GuardrailEngine {
@@ -41,7 +41,8 @@ export class GuardrailEngine {
     ]);
 
     if (writeActions.has(request.action)) {
-      const hasWriter = await this.deps.locks.hasActiveWriter(request.resource);
+      // [A-2] Pass leaseId to ignore self-lock
+      const hasWriter = await this.deps.locks.hasActiveWriter(request.resource, request.leaseId);
       if (hasWriter) {
         return { allowed: false, reason: "multi_writer_conflict_on_same_resource" };
       }

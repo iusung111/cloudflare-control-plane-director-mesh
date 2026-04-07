@@ -1,0 +1,8 @@
+name = "cloudflare-control-plane-director-mesh"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+# GITHUB_OWNER = "your-org"
+# GITHUB_REPO = "your-repo"
+# GITHUB_BRANCH = "main"

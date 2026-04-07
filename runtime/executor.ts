@@ -1,74 +1,91 @@
-import { EffectType, ResourceScope } from "./types";
-
-export interface SideEffectRequest {
-  effectId: string;
-  effectType: EffectType;
-  sourceEventId: string;
-  resource: ResourceScope;
-  payload: unknown;
-  executionPolicy: {
-    retry: number;
-    timeoutSeconds: number;
-    idempotent: boolean;
-  };
-}
+import { CommandRequest, MissionEvent, CommandStatus } from "./types";
 
 export interface ExecutionResult {
-  effectId: string;
   status: "success" | "failure" | "blocked";
   reason?: string;
-  output?: unknown;
+  payload?: any;
 }
 
-export interface EffectHandler {
-  handle(request: SideEffectRequest): Promise<ExecutionResult>;
+export interface CommandHandler {
+  handle(request: CommandRequest): Promise<ExecutionResult>;
 }
 
-export type HandlerMap = Partial<Record<EffectType, EffectHandler>>;
+export class MissionExecutor {
+  private handlers = new Map<string, CommandHandler>();
 
-export class SideEffectExecutor {
-  constructor(private readonly handlers: HandlerMap) {}
+  registerHandler(action: string, handler: CommandHandler): void {
+    this.handlers.set(action, handler);
+  }
 
-  async execute(request: SideEffectRequest): Promise<ExecutionResult> {
-    this.validate(request);
+  async execute(request: CommandRequest): Promise<ExecutionResult> {
+    // [A-3] Removed hardcoded deploy_live blocking
+    // Delegation is now handled by guardrails and individual handlers
 
-    if (request.effectType === "deploy_live") {
-      return {
-        effectId: request.effectId,
-        status: "blocked",
-        reason: "live_deploy_must_be_explicitly_authorized_by_guardrail",
-      };
-    }
-
-    const handler = this.handlers[request.effectType];
+    const handler = this.handlers.get(request.action);
     if (!handler) {
       return {
-        effectId: request.effectId,
         status: "blocked",
-        reason: "no_handler_registered_for_effect_type",
+        reason: `no_handler_registered_for_${request.action}`,
       };
     }
 
-    return handler.handle(request);
+    try {
+      return await handler.handle(request);
+    } catch (error: any) {
+      return {
+        status: "failure",
+        reason: `handler_exception: ${error.message}`,
+      };
+    }
   }
 
-  private validate(request: SideEffectRequest): void {
-    if (!request.effectId || !request.sourceEventId) {
-      throw new Error("executor: invalid_effect_request");
-    }
+  // --- Helper for creating completed/failed events ---
+  static toEvent(
+    request: CommandRequest,
+    result: ExecutionResult,
+  ): MissionEvent {
+    const status: CommandStatus =
+      result.status === "success"
+        ? "completed"
+        : result.status === "blocked"
+        ? "failed" // [B-2] Aligning blocked with failed as per recommendation
+        : "failed";
 
-    if (request.executionPolicy.retry < 0 || request.executionPolicy.timeoutSeconds <= 0) {
-      throw new Error("executor: invalid_execution_policy");
-    }
+    const type = status === "completed" ? "COMMAND_COMPLETED" : "COMMAND_FAILED";
+
+    return {
+      eventId: `evt:${request.commandId}:${status}:${Date.now()}`,
+      commandId: request.commandId,
+      type,
+      status,
+      reason: result.reason,
+      resource: request.resource,
+      payload: result.payload,
+      createdAt: new Date().toISOString(),
+    };
   }
 }
 
-export class NoopHandler implements EffectHandler {
-  async handle(request: SideEffectRequest): Promise<ExecutionResult> {
+/**
+ * [A-3] Temporary Mock Handler for deploy_live to prove the flow
+ */
+export class MockDeployHandler implements CommandHandler {
+  async handle(request: CommandRequest): Promise<ExecutionResult> {
+    if (request.payload.forceFail) {
+      return {
+        status: "failure",
+        reason: "mock_forced_failure",
+      };
+    }
+    if (request.action === "deploy_live" && request.payload.explicitLive) {
+      return {
+        status: "success",
+        reason: "mock_deployment_successful",
+      };
+    }
     return {
-      effectId: request.effectId,
-      status: "success",
-      output: { handledBy: "NoopHandler", effectType: request.effectType },
+      status: "failure",
+      reason: "mock_deployment_rejected",
     };
   }
 }

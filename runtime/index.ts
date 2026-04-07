@@ -2,7 +2,7 @@ import { MissionKernel, MissionKernelDeps } from "./kernel";
 import { SessionManager } from "./session";
 import { QueueManager } from "./queue";
 import { GuardrailEngine } from "./guardrail";
-import { SideEffectExecutor, NoopHandler, SideEffectRequest } from "./executor";
+import { MissionExecutor, MockDeployHandler } from "./executor";
 import { RuntimeStore } from "./store";
 import { GitHubRuntimeStore, GitHubStoreConfig } from "./github_store";
 import { CommandRequest, MissionEvent, DerivedState } from "./types";
@@ -11,34 +11,41 @@ export interface RuntimeConfig {
   github: GitHubStoreConfig;
 }
 
+export interface RuntimeDeps {
+  store: RuntimeStore;
+  executor: MissionExecutor;
+  guardrails: GuardrailEngine;
+}
+
 export class ControlPlaneRuntime {
   private readonly store: RuntimeStore;
   private readonly sessions: SessionManager;
   private readonly queue: QueueManager;
   private readonly guardrails: GuardrailEngine;
-  private readonly executor: SideEffectExecutor;
+  private readonly executor: MissionExecutor;
   private readonly kernel: MissionKernel;
 
-  constructor(config: RuntimeConfig) {
-    this.store = new GitHubRuntimeStore(config.github);
+  constructor(config: RuntimeConfig, overrides?: Partial<RuntimeDeps>) {
+    // [B-1] Support Dependency Injection
+    this.store = overrides?.store ?? new GitHubRuntimeStore(config.github);
     this.sessions = new SessionManager(this.store);
     this.queue = new QueueManager(this.store);
 
-    this.guardrails = new GuardrailEngine({
+    this.guardrails = overrides?.guardrails ?? new GuardrailEngine({
       locks: {
-        hasActiveWriter: (resource) => this.store.hasActiveLock(resource),
+        // [A-2] Pass exceptLeaseId to avoid self-lock conflict
+        hasActiveWriter: (resource, exceptLeaseId) => this.store.hasActiveLock(resource, exceptLeaseId),
       },
     });
 
-    this.executor = new SideEffectExecutor({
-      github_write: new NoopHandler(),
-      github_branch_create: new NoopHandler(),
-      github_pr_create: new NoopHandler(),
-      verify_run: new NoopHandler(),
-      browser_check: new NoopHandler(),
-      deploy_mirror: new NoopHandler(),
-      deploy_live: new NoopHandler(), // Will be called only if guardrail passes
-    });
+    if (overrides?.executor) {
+      this.executor = overrides.executor;
+    } else {
+      this.executor = new MissionExecutor();
+      // Register default handlers or mock handlers
+      this.executor.registerHandler("deploy_live", new MockDeployHandler());
+      // Other handlers can be registered here as Noop or real ones
+    }
 
     const kernelDeps: MissionKernelDeps = {
       store: this.store,
@@ -61,34 +68,11 @@ export class ControlPlaneRuntime {
 
     // 2. Handle next actions
     if (result.state.nextAction === "emit_side_effect") {
-      const effectRequest: SideEffectRequest = {
-        effectId: `eff:${request.commandId}:${Date.now()}`,
-        effectType: request.action,
-        sourceEventId: result.event.eventId,
-        resource: request.resource,
-        payload: request.payload,
-        executionPolicy: {
-          retry: 1,
-          timeoutSeconds: 30,
-          idempotent: true,
-        },
-      };
-
       try {
-        const executionResult = await this.executor.execute(effectRequest);
+        const executionResult = await this.executor.execute(request);
         
-        // Emit completion/failure event based on execution result
-        const statusEvent: MissionEvent = {
-          eventId: `evt:${request.commandId}:${executionResult.status === "success" ? "completed" : "failed"}:${Date.now()}`,
-          commandId: request.commandId,
-          type: executionResult.status === "success" ? "COMMAND_COMPLETED" : "COMMAND_FAILED",
-          status: executionResult.status === "success" ? "completed" : "failed",
-          reason: executionResult.reason,
-          resource: request.resource,
-          payload: executionResult.output,
-          createdAt: new Date().toISOString(),
-        };
-        
+        // [B-2] Emit completion/failure event based on execution result
+        const statusEvent = MissionExecutor.toEvent(request, executionResult);
         await this.store.appendEvent(statusEvent);
         
         // Return refined state
@@ -108,12 +92,15 @@ export class ControlPlaneRuntime {
           commandId: request.commandId,
           type: "COMMAND_FAILED",
           status: "failed",
-          reason: err.message,
+          reason: `unexpected_executor_error: ${err.message}`,
           resource: request.resource,
           createdAt: new Date().toISOString(),
         };
         await this.store.appendEvent(errorEvent);
-        return { event: result.event, state: { ...result.state, status: "failed", nextAction: "escalate" } };
+        return { 
+          event: result.event, 
+          state: { ...result.state, status: "failed", nextAction: "escalate" } 
+        };
       }
 
     } else if (result.state.nextAction === "queue") {

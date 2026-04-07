@@ -3,6 +3,7 @@ import { MissionKernel } from '../kernel';
 import { InMemoryRuntimeStore } from '../store';
 import { GuardrailEngine } from '../guardrail';
 import { CommandRequest, Session, Lease } from '../types';
+import { makeConflictKey } from '../resource_key';
 
 describe('MissionKernel - Core Invariants', () => {
   let store: InMemoryRuntimeStore;
@@ -17,10 +18,13 @@ describe('MissionKernel - Core Invariants', () => {
     expiresAt: new Date(Date.now() + 3600000).toISOString(),
   };
 
+  const resource = { repo: 'owner/repo', branch: 'main', path: 'src/' };
+  const conflictKey = makeConflictKey(resource);
+
   const activeLease: Lease = {
     leaseId: 'lease-1',
     sessionId: 'sess-1',
-    resource: { repo: 'owner/repo', branch: 'main', path: 'src/' },
+    resource,
     status: 'active',
     createdAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + 3600000).toISOString(),
@@ -32,7 +36,7 @@ describe('MissionKernel - Core Invariants', () => {
     store.saveLease(activeLease);
     
     guardrails = new GuardrailEngine({
-      locks: { hasActiveWriter: (res) => store.hasActiveLock(res) }
+      locks: { hasActiveWriter: (res, ex) => store.hasActiveLock(res, ex) }
     });
     
     kernel = new MissionKernel({
@@ -51,11 +55,11 @@ describe('MissionKernel - Core Invariants', () => {
     const request: CommandRequest = {
       commandId: 'cmd-1',
       dedupKey: 'dedup-1',
-      conflictKey: 'key-1',
+      conflictKey,
       authority: 'P2_CONTROL_PLANE',
       sessionId: 'sess-1',
       leaseId: 'lease-1',
-      resource: { repo: 'owner/repo', branch: 'main', path: 'src/' },
+      resource,
       action: 'github_write',
       payload: {},
     };
@@ -70,15 +74,50 @@ describe('MissionKernel - Core Invariants', () => {
     expect(result2.event.reason).toBe('duplicate_command');
   });
 
+  it('should reject if conflictKey does not match resource normalization', async () => {
+    const request: CommandRequest = {
+      commandId: 'cmd-val-1',
+      dedupKey: 'dedup-val-1',
+      conflictKey: 'WRONG_KEY',
+      authority: 'P2_CONTROL_PLANE',
+      sessionId: 'sess-1',
+      leaseId: 'lease-1',
+      resource,
+      action: 'github_write',
+      payload: {},
+    };
+
+    const result = await kernel.processCommand(request);
+    expect(result.event.status).toBe('rejected');
+    expect(result.event.reason).toBe('invalid_request_conflict_key');
+  });
+
+  it('[A-2] should NOT conflict with self lease', async () => {
+    const request: CommandRequest = {
+      commandId: 'cmd-self-1',
+      dedupKey: 'dedup-self-1',
+      conflictKey,
+      authority: 'P2_CONTROL_PLANE',
+      sessionId: 'sess-1',
+      leaseId: 'lease-1', // Same as activeLease
+      resource,
+      action: 'github_write',
+      payload: {},
+    };
+
+    const result = await kernel.processCommand(request);
+    expect(result.event.status).toBe('emitted');
+  });
+
   it('should block deploy_live without explicit approval', async () => {
     const request: CommandRequest = {
       commandId: 'cmd-3',
       dedupKey: 'dedup-3',
-      conflictKey: 'key-3',
+      conflictKey,
       authority: 'P2_CONTROL_PLANE',
       sessionId: 'sess-1',
       leaseId: 'lease-1',
-      resource: { repo: 'owner/repo', branch: 'main', path: 'src/' },
+      resource,
       action: 'deploy_live',
       payload: {}, // No explicitLive: true
     };
@@ -92,11 +131,11 @@ describe('MissionKernel - Core Invariants', () => {
     const request: CommandRequest = {
       commandId: 'cmd-4',
       dedupKey: 'dedup-4',
-      conflictKey: 'key-4',
+      conflictKey,
       authority: 'P2_CONTROL_PLANE',
       sessionId: 'sess-1',
       leaseId: 'lease-1',
-      resource: { repo: 'owner/repo', branch: 'main', path: 'src/' },
+      resource,
       action: 'template_mutation',
       payload: {},
     };
@@ -106,12 +145,12 @@ describe('MissionKernel - Core Invariants', () => {
     expect(result.event.reason).toContain('strictly_forbidden');
   });
 
-  it('should queue commands on resource conflict', async () => {
+  it('should queue commands on resource conflict with OTHER lease', async () => {
     // Occupy resource with another active lease
     store.saveLease({
       leaseId: 'lease-other',
       sessionId: 'sess-other',
-      resource: { repo: 'owner/repo', branch: 'main', path: 'src/' },
+      resource,
       status: 'active',
       createdAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 3600000).toISOString(),
@@ -120,11 +159,11 @@ describe('MissionKernel - Core Invariants', () => {
     const request: CommandRequest = {
       commandId: 'cmd-5',
       dedupKey: 'dedup-5',
-      conflictKey: 'key-5',
+      conflictKey,
       authority: 'P2_CONTROL_PLANE',
       sessionId: 'sess-1',
       leaseId: 'lease-1',
-      resource: { repo: 'owner/repo', branch: 'main', path: 'src/' },
+      resource,
       action: 'github_write',
       payload: {},
     };

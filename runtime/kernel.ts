@@ -5,11 +5,12 @@ import {
   CommandStatus,
   ResourceScope,
 } from "./types";
+import { makeConflictKey } from "./resource_key";
 
 export interface KernelStore {
   hasDedup(dedupKey: string): Promise<boolean>;
   saveDedup(dedupKey: string, commandId: string): Promise<void>;
-  hasActiveLock(resource: ResourceScope): Promise<boolean>;
+  hasActiveLock(resource: ResourceScope, exceptLeaseId?: string): Promise<boolean>;
   appendEvent(event: MissionEvent): Promise<void>;
 }
 
@@ -37,13 +38,20 @@ export class MissionKernel {
     await this.validate(request);
     await this.authorityCheck(request);
 
+    // [A-2] Validate conflictKey against resource
+    const expectedConflictKey = makeConflictKey(request.resource);
+    if (request.conflictKey !== expectedConflictKey) {
+      return this.reject(request, "invalid_request_conflict_key");
+    }
+
     // 1. Dedup Check (using dedupKey)
     if (await this.deps.store.hasDedup(request.dedupKey)) {
       return this.reject(request, "duplicate_command");
     }
 
     // 2. Conflict Check (using conflictKey/resource)
-    if (await this.deps.store.hasActiveLock(request.resource)) {
+    // [A-2] Use exceptLeaseId to avoid self-lock conflict
+    if (await this.deps.store.hasActiveLock(request.resource, request.leaseId)) {
       return this.queue(request, "resource_conflict");
     }
 

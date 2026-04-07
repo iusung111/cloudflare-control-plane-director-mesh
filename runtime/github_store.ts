@@ -1,23 +1,50 @@
-import { RuntimeStore, MissionEvent, Session, Lease, QueueItem, ResourceScope, QueueType } from "./types";
+import { RuntimeStore } from "./store";
+import {
+  MissionEvent,
+  Session,
+  Lease,
+  QueueItem,
+  ResourceScope,
+  QueueType,
+} from "./types";
+import { encodeBase64, decodeBase64 } from "./encoding";
+import {
+  safeDedupPath,
+  eventPath,
+  sessionPath,
+  leasePath,
+  queuePath,
+  queueDir,
+} from "./github_path";
 
 export interface GitHubStoreConfig {
   owner: string;
   repo: string;
   token: string;
-  branch?: string;
+  branch: string; // Made mandatory as per [A-4]
 }
 
 export class GitHubRuntimeStore implements RuntimeStore {
-  constructor(private readonly config: GitHubStoreConfig) {}
+  constructor(private readonly config: GitHubStoreConfig) {
+    if (!config.branch) {
+      throw new Error("GitHubRuntimeStore: branch is required");
+    }
+  }
 
   async hasDedup(dedupKey: string): Promise<boolean> {
-    const path = `.control-plane/dedup/${dedupKey}`;
+    const path = safeDedupPath(dedupKey);
     return this.fileExists(path);
   }
 
   async saveDedup(dedupKey: string, commandId: string): Promise<void> {
-    const path = `.control-plane/dedup/${dedupKey}`;
-    await this.writeFile(path, JSON.stringify({ commandId, createdAt: new Date().toISOString() }));
+    const path = safeDedupPath(dedupKey);
+    // [A-5] Store original dedupKey in the JSON content
+    const content = JSON.stringify({
+      dedupKey,
+      commandId,
+      createdAt: new Date().toISOString(),
+    });
+    await this.writeFile(path, content);
   }
 
   async hasActiveLock(resource: ResourceScope, exceptLeaseId?: string): Promise<boolean> {
@@ -32,29 +59,29 @@ export class GitHubRuntimeStore implements RuntimeStore {
   }
 
   async appendEvent(event: MissionEvent): Promise<void> {
-    const path = `.control-plane/events/${this.getTodayPath()}/${event.eventId}.json`;
+    const path = eventPath(event.eventId, new Date(event.createdAt));
     await this.writeFile(path, JSON.stringify(event, null, 2));
   }
 
   async getSession(sessionId: string): Promise<Session | null> {
-    const path = `.control-plane/sessions/${sessionId}.json`;
+    const path = sessionPath(sessionId);
     const content = await this.readFile(path);
     return content ? JSON.parse(content) : null;
   }
 
   async getLease(leaseId: string): Promise<Lease | null> {
-    const path = `.control-plane/leases/${leaseId}.json`;
+    const path = leasePath(leaseId);
     const content = await this.readFile(path);
     return content ? JSON.parse(content) : null;
   }
 
   async saveLease(lease: Lease): Promise<void> {
-    const path = `.control-plane/leases/${lease.leaseId}.json`;
+    const path = leasePath(lease.leaseId);
     await this.writeFile(path, JSON.stringify(lease, null, 2));
   }
 
   async list(queue: QueueType): Promise<QueueItem[]> {
-    const dir = `.control-plane/queues/${queue}`;
+    const dir = queueDir(queue);
     const files = await this.listDir(dir);
     const items: QueueItem[] = [];
     for (const file of files) {
@@ -65,14 +92,14 @@ export class GitHubRuntimeStore implements RuntimeStore {
   }
 
   async enqueue(item: QueueItem): Promise<void> {
-    const path = `.control-plane/queues/${item.queue}/${item.itemId}.json`;
+    const path = queuePath(item.queue, item.itemId);
     await this.writeFile(path, JSON.stringify(item, null, 2));
   }
 
   async dequeue(itemId: string): Promise<void> {
     const queues: QueueType[] = ["task", "review", "proposal", "conflict", "deploy"];
     for (const q of queues) {
-      const path = `.control-plane/queues/${q}/${itemId}.json`;
+      const path = queuePath(q, itemId);
       if (await this.fileExists(path)) {
         await this.deleteFile(path);
         return;
@@ -89,38 +116,43 @@ export class GitHubRuntimeStore implements RuntimeStore {
   private async readFile(path: string): Promise<string | null> {
     const res = await this.apiCall(path, "GET");
     if (res.status !== 200) return null;
-    const data = await res.json();
-    // Using globalThis.atob for Worker compatibility
-    return globalThis.atob(data.content.replace(/\n/g, ''));
+    const data = (await res.json()) as { content: string };
+    // [A-6] Using UTF-8 safe base64 decode
+    return decodeBase64(data.content);
   }
 
   private async writeFile(path: string, content: string): Promise<void> {
     const existing = await this.apiCall(path, "GET");
     let sha: string | undefined;
     if (existing.status === 200) {
-      const data = await existing.json();
+      const data = (await existing.json()) as { sha: string };
       sha = data.sha;
     }
 
     const res = await this.apiCall(path, "PUT", {
       message: `Control Plane: update ${path}`,
-      content: globalThis.btoa(content),
+      // [A-6] Using UTF-8 safe base64 encode
+      content: encodeBase64(content),
       sha,
-      branch: this.config.branch || "main",
+      branch: this.config.branch,
     });
 
-    if (!res.ok) throw new Error(`GitHub write failed: ${res.statusText}`);
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`GitHub write failed for ${path}: ${res.status} ${res.statusText} - ${errorText}`);
+    }
   }
 
   private async deleteFile(path: string): Promise<void> {
     const existing = await this.apiCall(path, "GET");
     if (existing.status !== 200) return;
-    const { sha } = await existing.json();
+    const data = (await existing.json()) as { sha: string };
+    const sha = data.sha;
 
     await this.apiCall(path, "DELETE", {
       message: `Control Plane: delete ${path}`,
       sha,
-      branch: this.config.branch || "main",
+      branch: this.config.branch,
     });
   }
 
@@ -133,7 +165,7 @@ export class GitHubRuntimeStore implements RuntimeStore {
   }
 
   private async apiCall(path: string, method: string, body?: any): Promise<Response> {
-    const url = `https://api.github.com/repos/${this.config.owner}/${this.config.repo}/contents/${path}${method === "GET" || method === "HEAD" ? "?ref=" + (this.config.branch || "main") : ""}`;
+    const url = `https://api.github.com/repos/${this.config.owner}/${this.config.repo}/contents/${path}${method === "GET" || method === "HEAD" ? "?ref=" + this.config.branch : ""}`;
     return fetch(url, {
       method,
       headers: {
@@ -155,12 +187,11 @@ export class GitHubRuntimeStore implements RuntimeStore {
     return leases;
   }
 
-  private getTodayPath(): string {
-    const now = new Date();
-    return `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`;
-  }
-
   private sameResource(left: ResourceScope, right: ResourceScope): boolean {
-    return left.repo === right.repo && (left.branch ?? "") === (right.branch ?? "") && (left.path ?? "") === (right.path ?? "");
+    return (
+      left.repo.toLowerCase() === right.repo.toLowerCase() &&
+      (left.branch ?? "").toLowerCase() === (right.branch ?? "").toLowerCase() &&
+      (left.path ?? "").toLowerCase() === (right.path ?? "").toLowerCase()
+    );
   }
 }
