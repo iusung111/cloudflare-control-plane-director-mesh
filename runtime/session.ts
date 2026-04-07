@@ -1,29 +1,4 @@
-export type SessionRole = "delivery" | "reliability" | "reviewer";
-
-export type LeaseStatus = "active" | "expired" | "revoked";
-
-export interface ResourceScope {
-  repo: string;
-  branch?: string;
-  path?: string;
-}
-
-export interface Session {
-  sessionId: string;
-  role: SessionRole;
-  templateVersion: string;
-  createdAt: string;
-  expiresAt: string;
-}
-
-export interface Lease {
-  leaseId: string;
-  sessionId: string;
-  resource: ResourceScope;
-  status: LeaseStatus;
-  createdAt: string;
-  expiresAt: string;
-}
+import { ResourceScope, Session, Lease, SessionRole, LeaseStatus } from "./types";
 
 export interface SessionStore {
   getSession(sessionId: string): Promise<Session | null>;

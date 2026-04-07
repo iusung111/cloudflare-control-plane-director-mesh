@@ -1,20 +1,4 @@
-export type QueueType =
-  | "task"
-  | "review"
-  | "proposal"
-  | "conflict"
-  | "deploy";
-
-export type QueuePriority = "P0" | "P1" | "P2" | "P3" | "P4" | "P5";
-
-export interface QueueItem {
-  itemId: string;
-  queue: QueueType;
-  priority: QueuePriority;
-  blocking: boolean;
-  createdAt: string;
-  payload: unknown;
-}
+import { QueueType, QueuePriority, QueueItem } from "./types";
 
 export interface QueueStore {
   list(queue: QueueType): Promise<QueueItem[]>;

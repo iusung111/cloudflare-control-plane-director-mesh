@@ -1,51 +1,10 @@
-export type AuthorityLevel =
-  | "P0_USER"
-  | "P1_SAFETY"
-  | "P2_CONTROL_PLANE"
-  | "P3_QUALITY"
-  | "P4_POD"
-  | "P5_WORKER";
-
-export type CommandStatus =
-  | "received"
-  | "rejected"
-  | "queued"
-  | "emitted"
-  | "completed";
-
-export interface ResourceScope {
-  repo: string;
-  branch?: string;
-  path?: string;
-}
-
-export interface CommandRequest {
-  commandId: string;
-  dedupKey: string;
-  conflictKey: string;
-  authority: AuthorityLevel;
-  sessionId: string;
-  leaseId: string;
-  resource: ResourceScope;
-  payload: unknown;
-}
-
-export interface MissionEvent {
-  eventId: string;
-  commandId: string;
-  type: "COMMAND_RECEIVED" | "COMMAND_REJECTED" | "COMMAND_EMITTED";
-  status: CommandStatus;
-  reason?: string;
-  resource: ResourceScope;
-  createdAt: string;
-}
-
-export interface DerivedState {
-  commandId: string;
-  status: CommandStatus;
-  lastEventId: string;
-  nextAction: "none" | "emit_side_effect" | "escalate" | "queue";
-}
+import {
+  CommandRequest,
+  MissionEvent,
+  DerivedState,
+  CommandStatus,
+  ResourceScope,
+} from "./types";
 
 export interface KernelStore {
   hasDedup(key: string): Promise<boolean>;

@@ -1,44 +1,11 @@
-export interface ResourceScope {
-  repo: string;
-  branch?: string;
-  path?: string;
-}
-
-export interface MissionEvent {
-  eventId: string;
-  commandId: string;
-  type: string;
-  status: string;
-  reason?: string;
-  resource: ResourceScope;
-  createdAt: string;
-}
-
-export interface Session {
-  sessionId: string;
-  role: string;
-  templateVersion: string;
-  createdAt: string;
-  expiresAt: string;
-}
-
-export interface Lease {
-  leaseId: string;
-  sessionId: string;
-  resource: ResourceScope;
-  status: string;
-  createdAt: string;
-  expiresAt: string;
-}
-
-export interface QueueItem {
-  itemId: string;
-  queue: string;
-  priority: string;
-  blocking: boolean;
-  createdAt: string;
-  payload: unknown;
-}
+import {
+  ResourceScope,
+  MissionEvent,
+  Session,
+  Lease,
+  QueueItem,
+  QueueType,
+} from "./types";
 
 export interface RuntimeStore {
   hasDedup(key: string): Promise<boolean>;
@@ -50,7 +17,7 @@ export interface RuntimeStore {
   hasActiveLock(resource: ResourceScope, exceptLeaseId?: string): Promise<boolean>;
   saveLease(lease: Lease): Promise<void>;
 
-  list(queue: string): Promise<QueueItem[];
+  list(queue: QueueType): Promise<QueueItem[]>;
   enqueue(item: QueueItem): Promise<void>;
   dequeue(itemId: string): Promise<void>;
 }
@@ -58,7 +25,7 @@ export interface RuntimeStore {
 export class InMemoryRuntimeStore implements RuntimeStore {
   private readonly dedupKeys = new Set<string>();
   private readonly conflictKeys = new Map<string, ResourceScope>();
-  private readonly events : MissionEvent[] = [];
+  private readonly events: MissionEvent[] = [];
   private readonly sessions = new Map<string, Session>();
   private readonly leases = new Map<string, Lease>();
   private readonly queues = new Map<string, QueueItem[]>();
@@ -112,7 +79,7 @@ export class InMemoryRuntimeStore implements RuntimeStore {
     this.leases.set(lease.leaseId, lease);
   }
 
-  async list(queue: string): Promise<QueueItem[]> {
+  async list(queue: QueueType): Promise<QueueItem[]> {
     return this.queues.get(queue) ?? [];
   }
 

@@ -1,18 +1,4 @@
-export type EffectType =
-  | "github_write"
-  | "github_branch_create"
-  | "github_pr_create"
-  | "verify_run"
-  | "browser_check"
-  | "deploy_mirror"
-  | "deploy_live"
-  | "rollback";
-
-export interface ResourceScope {
-  repo: string;
-  branch?: string;
-  path?: string;
-}
+import { EffectType, ResourceScope } from "./types";
 
 export interface SideEffectRequest {
   effectId: string;

@@ -1,25 +1,4 @@
-export type CommandAction =
-  | "github_write"
-  | "github_branch_create"
-  | "github_pr_create"
-  | "verify_run"
-  | "browser_check"
-  | "deploy_mirror"
-  | "deploy_live"
-  | "template_mutation";
-
-export interface ResourceScope {
-  repo: string;
-  branch?: string;
-  path?: string;
-}
-
-export interface GuardrailRequest {
-  commandId: string;
-  action: CommandAction;
-  resource: ResourceScope;
-  payload: unknown;
-}
+import { CommandAction, ResourceScope, CommandRequest } from "./types";
 
 export interface GuardrailResult {
   allowed: boolean;
@@ -42,7 +21,7 @@ export interface GuardrailEngineDeps {
 export class GuardrailEngine {
   constructor(private readonly deps: GuardrailEngineDeps) {}
 
-  async allows(request: GuardrailRequest): Promise<GuardrailResult> {
+  async allows(request: CommandRequest): Promise<GuardrailResult> {
     if (request.action === "deploy_live") {
       const liveCommand = await this.deps.deploy.hasExplicitLiveCommand(request.commandId);
       if (!liveCommand) {
@@ -54,7 +33,7 @@ export class GuardrailEngine {
       return { allowed: false, reason: "template_mutation_forbidden" };
     }
 
-    if (this.is&CloudflarePath(request.resource.path)) {
+    if (this.isCloudflarePath(request.resource.path)) {
       return { allowed: false, reason: "cloudflare_can_only_store_metadata" };
     }
 
@@ -71,7 +50,7 @@ export class GuardrailEngine {
       }
     }
 
-    return { alowed: true };
+    return { allowed: true };
   }
 
   private isCloudflarePath(path?: string): boolean {
