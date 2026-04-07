@@ -172,4 +172,40 @@ describe('MissionKernel - Core Invariants', () => {
     expect(result.event.status).toBe('queued');
     expect(result.event.type).toBe('COMMAND_QUEUED');
   });
+
+  it('should reject if session does not exist', async () => {
+    const request: CommandRequest = {
+      commandId: 'cmd-6',
+      dedupKey: 'dedup-6',
+      conflictKey,
+      authority: 'P2_CONTROL_PLANE',
+      sessionId: 'MISSING_SESSION',
+      leaseId: 'lease-1',
+      resource,
+      action: 'github_write',
+      payload: {},
+    };
+
+    const result = await kernel.processCommand(request);
+    expect(result.event.status).toBe('rejected');
+    expect(result.event.reason).toBe('invalid_lease');
+  });
+
+  it('should reject if lease does not exist or is invalid', async () => {
+    const request: CommandRequest = {
+      commandId: 'cmd-7',
+      dedupKey: 'dedup-7',
+      conflictKey,
+      authority: 'P2_CONTROL_PLANE',
+      sessionId: 'sess-1',
+      leaseId: 'MISSING_LEASE',
+      resource,
+      action: 'github_write',
+      payload: {},
+    };
+
+    const result = await kernel.processCommand(request);
+    expect(result.event.status).toBe('rejected');
+    expect(result.event.reason).toBe('invalid_lease');
+  });
 });

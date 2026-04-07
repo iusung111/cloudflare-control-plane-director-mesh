@@ -91,7 +91,7 @@ Commands follow a deterministic path:
 3.  **COMMAND_REJECTED / rejected:** Validation, authority, or guardrail check failed.
 4.  **COMMAND_EMITTED / emitted:** Command cleared for execution; side-effect request created.
 5.  **COMMAND_COMPLETED / completed:** Side-effect execution reported success.
-6.  **COMMAND_FAILED / failed:** Side-effect execution failed or was blocked.
+6.  **COMMAND_FAILED / failed:** Side-effect execution reported as failure.
 
 | Current Type | Next Type | Condition |
 | :--- | :--- | :--- |
@@ -100,7 +100,15 @@ Commands follow a deterministic path:
 | RECEIVED | REJECTED | `authority` or `guardrail` fail, or invalid `conflictKey` |
 | RECEIVED | EMITTED | All checks pass |
 | EMITTED | COMPLETED | Side-effect executor returns `success` |
-| EMITTED | FAILED | Side-effect executor returns `failure` or `blocked` |
+| EMITTED | FAILED | Side-effect executor returns `failure` |
+
+*Note: In previous versions, `blocked` was a terminal state. It is now unified under `failed` with specific reason metadata.*
+
+## Configuration & Security
+### GITHUB_BRANCH Policy
+- **Strictly Explicit**: The `GITHUB_BRANCH` environment variable must be configured.
+- **No Fallbacks**: The system will NOT fallback to `main` or `master` if the variable is missing. It will return a `configuration_error`.
+- **Match Target**: This branch must match the default branch of the repository used for control plane storage.
 
 ## Idempotency Rules
 *   **Dedup Key:** Each command must include a client-generated `dedupKey`. 

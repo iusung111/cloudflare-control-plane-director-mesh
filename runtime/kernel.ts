@@ -36,7 +36,18 @@ export class MissionKernel {
     state: DerivedState;
   }> {
     await this.validate(request);
-    await this.authorityCheck(request);
+    
+    // [A-4] Authority Check (Session/Lease)
+    const leaseOk = await this.deps.leases.isValid(
+      request.sessionId,
+      request.leaseId,
+      request.resource,
+    );
+
+    if (!leaseOk) {
+      // Return rejected event instead of throwing for known authority failures
+      return this.reject(request, "invalid_lease");
+    }
 
     // [A-2] Validate conflictKey against resource
     const expectedConflictKey = makeConflictKey(request.resource);
@@ -77,18 +88,6 @@ export class MissionKernel {
   private async validate(request: CommandRequest): Promise<void> {
     if (!request.commandId || !request.dedupKey || !request.conflictKey) {
       throw new Error("mission_kernel: invalid_request");
-    }
-  }
-
-  private async authorityCheck(request: CommandRequest): Promise<void> {
-    const leaseOk = await this.deps.leases.isValid(
-      request.sessionId,
-      request.leaseId,
-      request.resource,
-    );
-
-    if (!leaseOk) {
-      throw new Error("mission_kernel: lease_invalid");
     }
   }
 

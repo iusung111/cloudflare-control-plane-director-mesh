@@ -9,30 +9,35 @@ This file summarizes the current implementation state for the Cloudflare Control
 - **Self-Lock Bug:** Fixed. `hasActiveLock` now accepts `exceptLeaseId` to avoid conflicting with self.
 - **Deploy Live Path:** Fixed. Double-blocking removed; `guardrail` handles policy and `executor` delegates to registered handlers.
 - **GitHub Store Safety:**
-  - `GITHUB_BRANCH` is now mandatory or explicitly defaulted to avoid mismatch.
+  - `GITHUB_BRANCH` is now **strictly mandatory**. No fallback to "main" or "master" is allowed.
   - Dedup paths are now safe (using hashed filenames) and store metadata in JSON.
   - UTF-8 safe base64 encoding/decoding using `TextEncoder`/`TextDecoder`.
-- **Validation:** `conflictKey` is now validated against resource normalization rules.
-- **Verification:** Unit and integration tests covering core invariants and full execution flow are passing.
+- **Validation:** `resource` normalization and `conflictKey` generation are now consistent across all stores.
+- **Verification:** 
+  - `npx tsc --noEmit` passing.
+  - `npm test` passing with expanded coverage (encoding, path safety, invalid session/lease).
+  - `npx wrangler deploy --dry-run` passing.
 
 ## Implementation Details
-- `runtime/resource_key.ts`: Resource normalization and `conflictKey` generation.
+- `runtime/resource_key.ts`: Resource normalization (`normalizeResourceScope`) and `conflictKey` generation.
 - `runtime/encoding.ts`: UTF-8 safe base64 helpers.
 - `runtime/github_path.ts`: Safe path generation for GitHub storage.
 - `runtime/executor.ts`: `MissionExecutor` with handler registration and mock support.
-- `runtime/test/runtime.test.ts`: New integration tests for full flow (emitted -> completed/failed).
+- `runtime/test/kernel.test.ts`: Expanded core invariant tests (invalid session/lease).
+- `runtime/test/encoding.test.ts`: New encoding roundtrip tests (ASCII, UTF-8, JSON).
+- `runtime/test/github_path.test.ts`: New path safety and consistency tests.
+- `runtime/test/runtime.test.ts`: Integration tests for full flow.
 
 ## Created/Updated files
-- `runtime/types.ts`: Domain models
-- `runtime/store.ts`: RuntimeStore interface and InMemory implementation
-- `runtime/github_store.ts`: Refactored GitHub API adapter (safe paths, UTF-8 base64)
-- `runtime/kernel.ts`: Refactored kernel (self-lock fix, conflictKey validation)
-- `runtime/executor.ts`: Refactored executor (delegation, handler support)
-- `runtime/index.ts`: Refactored runtime (DI support, executor wiring)
-- `src/index.ts`: Refactored Worker entry point (env validation)
-- `wrangler.toml`: Added configuration for Cloudflare Workers
-- `runtime/test/kernel.test.ts`: Updated core invariant tests
-- `runtime/test/runtime.test.ts`: New flow tests
+- `runtime/resource_key.ts`: Added normalization logic
+- `runtime/store.ts`: Updated `InMemoryRuntimeStore` to use normalization
+- `runtime/github_store.ts`: Updated `GitHubRuntimeStore` to use normalization and require branch
+- `src/index.ts`: Enforced mandatory `GITHUB_BRANCH`
+- `README.md`: Added execution and environment documentation
+- `runtime/test/kernel.test.ts`: Added invalid lease/session cases
+- `runtime/test/encoding.test.ts`: New file
+- `runtime/test/github_path.test.ts`: New file
+- `wrangler.toml`: Updated configuration comments
 
 ## Next steps
 - **Real Effect Handlers:** Implement Octokit/GitHub API calls for `github_write`, `github_branch_create`, etc.

@@ -20,12 +20,12 @@ app.post('/commands', async (c) => {
   const owner = c.env.GITHUB_OWNER;
   const repo = c.env.GITHUB_REPO;
   const token = c.env.GITHUB_TOKEN;
-  const branch = c.env.GITHUB_BRANCH || "main"; // Explicit default if not provided
+  const branch = c.env.GITHUB_BRANCH;
 
-  if (!owner || !repo || !token) {
+  if (!owner || !repo || !token || !branch) {
     return c.json({
       error: 'configuration_error',
-      message: 'GITHUB_OWNER, GITHUB_REPO, and GITHUB_TOKEN must be configured',
+      message: 'GITHUB_OWNER, GITHUB_REPO, GITHUB_TOKEN, and GITHUB_BRANCH must be explicitly configured',
     }, 500);
   }
 

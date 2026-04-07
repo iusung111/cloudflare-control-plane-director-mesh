@@ -16,6 +16,7 @@ import {
   queuePath,
   queueDir,
 } from "./github_path";
+import { normalizeResourceScope } from "./resource_key";
 
 export interface GitHubStoreConfig {
   owner: string;
@@ -188,10 +189,12 @@ export class GitHubRuntimeStore implements RuntimeStore {
   }
 
   private sameResource(left: ResourceScope, right: ResourceScope): boolean {
+    const nLeft = normalizeResourceScope(left);
+    const nRight = normalizeResourceScope(right);
     return (
-      left.repo.toLowerCase() === right.repo.toLowerCase() &&
-      (left.branch ?? "").toLowerCase() === (right.branch ?? "").toLowerCase() &&
-      (left.path ?? "").toLowerCase() === (right.path ?? "").toLowerCase()
+      nLeft.repo === nRight.repo &&
+      nLeft.branch === nRight.branch &&
+      nLeft.path === nRight.path
     );
   }
 }

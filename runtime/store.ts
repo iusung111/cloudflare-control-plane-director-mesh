@@ -6,6 +6,7 @@ import {
   QueueItem,
   QueueType,
 } from "./types";
+import { normalizeResourceScope } from "./resource_key";
 
 export interface RuntimeStore {
   hasDedup(dedupKey: string): Promise<boolean>;
@@ -96,10 +97,12 @@ export class InMemoryRuntimeStore implements RuntimeStore {
   }
 
   private sameResource(left: ResourceScope, right: ResourceScope): boolean {
+    const nLeft = normalizeResourceScope(left);
+    const nRight = normalizeResourceScope(right);
     return (
-      left.repo === right.repo &&
-      (left.branch ?? "") === (right.branch ?? "") &&
-      (left.path ?? "") === (right.path ?? "")
+      nLeft.repo === nRight.repo &&
+      nLeft.branch === nRight.branch &&
+      nLeft.path === nRight.path
     );
   }
 }
