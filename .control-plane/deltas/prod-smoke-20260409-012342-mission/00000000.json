@@ -1,0 +1,19 @@
+{
+  "type": "mission.snapshot",
+  "graph": {
+    "mission": {
+      "missionId": "prod-smoke-20260409-012342-mission",
+      "title": "Production Smoke Mission",
+      "repoKey": "iusung111/cloudflare-control-plane-director-mesh",
+      "env": "prod",
+      "phase": "qa",
+      "status": "active",
+      "ownerActor": "prod-smoke",
+      "createdAt": "2026-04-08T16:23:54.558Z",
+      "updatedAt": "2026-04-08T16:23:54.558Z"
+    },
+    "workers": [],
+    "edges": [],
+    "handoffs": []
+  }
+}
