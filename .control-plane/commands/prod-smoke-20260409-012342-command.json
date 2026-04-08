@@ -13,8 +13,9 @@
   "payload": {
     "note": "production smoke command"
   },
-  "status": "emitted",
-  "attemptCount": 0,
+  "status": "completed",
+  "attemptCount": 1,
   "createdAt": "2026-04-08T16:23:47.103Z",
-  "updatedAt": "2026-04-08T16:23:47.103Z"
+  "updatedAt": "2026-04-08T16:23:47.103Z",
+  "latestReason": "executed_inline"
 }
