@@ -1,0 +1,17 @@
+{
+  "requestId": "e2e-1775673664889-approval-request",
+  "actorId": "chatgpt-e2e",
+  "source": "chatgpt_app",
+  "queue": "approval",
+  "locale": "ko",
+  "title": "승인 버튼 클릭",
+  "prompt": "메인 orchestrator가 콘솔에서 승인 버튼을 눌러 deploy_live를 승인해야 합니다.",
+  "missionId": "e2e-1775673664889-mission",
+  "relatedCommandId": "e2e-1775673664889-deploy-live",
+  "targetUrl": "https://cloudflare-control-plane-director-mesh.iusung111.workers.dev/app",
+  "selector": "[data-command-action='approve'][data-id='e2e-1775673664889-deploy-live']",
+  "expectedText": "승인",
+  "status": "received",
+  "createdAt": "2026-04-08T18:41:18.935Z",
+  "updatedAt": "2026-04-08T18:41:18.935Z"
+}
