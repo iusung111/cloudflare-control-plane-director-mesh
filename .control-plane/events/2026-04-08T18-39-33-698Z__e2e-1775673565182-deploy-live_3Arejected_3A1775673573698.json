@@ -1,0 +1,22 @@
+{
+  "eventId": "e2e-1775673565182-deploy-live:rejected:1775673573698",
+  "commandId": "e2e-1775673565182-deploy-live",
+  "sessionId": "e2e-1775673565182-session",
+  "leaseId": "e2e-1775673565182-lease",
+  "type": "COMMAND_REJECTED",
+  "status": "rejected",
+  "action": "deploy_live",
+  "resource": {
+    "repo": "iusung111/cloudflare-control-plane-director-mesh",
+    "branch": "master",
+    "path": "ops/e2e/e2e-1775673565182.txt"
+  },
+  "reason": "deploy_live_requires_explicitLive_true",
+  "payload": {
+    "missionId": "e2e-1775673565182-mission",
+    "explicitLive": false,
+    "note": "e2e-console-approval",
+    "conflictKey": "iusung111/cloudflare-control-plane-director-mesh:master:ops/e2e/e2e-1775673565182.txt"
+  },
+  "createdAt": "2026-04-08T18:39:33.698Z"
+}
