@@ -1,0 +1,19 @@
+{
+  "eventId": "app-cutover-20260409-015121-command:emitted:1775667089066",
+  "commandId": "app-cutover-20260409-015121-command",
+  "sessionId": "app-cutover-20260409-015121-session",
+  "leaseId": "app-cutover-20260409-015121-lease",
+  "type": "COMMAND_EMITTED",
+  "status": "emitted",
+  "action": "deploy_live",
+  "resource": {
+    "branch": "master",
+    "path": ".control-plane/app-cutover/app-cutover-20260409-015121.json",
+    "repo": "iusung111/cloudflare-control-plane-director-mesh"
+  },
+  "payload": {
+    "note": "github app cutover smoke",
+    "conflictKey": "iusung111/cloudflare-control-plane-director-mesh:master:.control-plane/app-cutover/app-cutover-20260409-015121.json"
+  },
+  "createdAt": "2026-04-08T16:51:29.066Z"
+}
