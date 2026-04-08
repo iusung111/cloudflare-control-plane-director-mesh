@@ -1,0 +1,21 @@
+{
+  "commandId": "prod-rotate-20260409-020231-command",
+  "dedupKey": "prod-rotate-20260409-020231-dedup",
+  "sessionId": "prod-rotate-20260409-020231-session",
+  "leaseId": "prod-rotate-20260409-020231-lease",
+  "action": "github_write",
+  "resource": {
+    "branch": "master",
+    "path": "apps/worker/src/index.ts",
+    "repo": "iusung111/cloudflare-control-plane-director-mesh"
+  },
+  "conflictKey": "iusung111/cloudflare-control-plane-director-mesh:master:apps/worker/src/index.ts",
+  "payload": {
+    "title": "production auth rotation smoke"
+  },
+  "status": "rejected",
+  "attemptCount": 1,
+  "createdAt": "2026-04-08T17:02:38.924Z",
+  "updatedAt": "2026-04-08T17:02:38.924Z",
+  "latestReason": "invalid_lease"
+}
