@@ -1,0 +1,71 @@
+{
+  "type": "mission.snapshot",
+  "graph": {
+    "mission": {
+      "missionId": "prod-smoke-20260409-012342-mission",
+      "title": "Production Smoke Mission",
+      "repoKey": "iusung111/cloudflare-control-plane-director-mesh",
+      "env": "prod",
+      "phase": "qa",
+      "status": "completed",
+      "ownerActor": "prod-smoke",
+      "createdAt": "2026-04-08T16:23:54.558Z",
+      "updatedAt": "2026-04-08T16:24:15.503Z"
+    },
+    "workers": [
+      {
+        "missionId": "prod-smoke-20260409-012342-mission",
+        "workerId": "prod-smoke-20260409-012342-root",
+        "role": "operator",
+        "phase": "qa",
+        "status": "completed",
+        "title": "Smoke Root",
+        "summary": "Root smoke worker done",
+        "progress": 100,
+        "startedAt": "2026-04-08T16:23:59.154Z",
+        "updatedAt": "2026-04-08T16:24:14.711Z",
+        "completedAt": "2026-04-08T16:24:14.711Z",
+        "lastHeartbeatAt": "2026-04-08T16:24:14.711Z"
+      },
+      {
+        "missionId": "prod-smoke-20260409-012342-mission",
+        "workerId": "prod-smoke-20260409-012342-child",
+        "parentWorkerId": "prod-smoke-20260409-012342-root",
+        "role": "reviewer",
+        "phase": "qa",
+        "status": "completed",
+        "title": "Smoke Child",
+        "summary": "Child smoke worker",
+        "progress": 100,
+        "startedAt": "2026-04-08T16:24:04.599Z",
+        "updatedAt": "2026-04-08T16:24:04.599Z",
+        "completedAt": "2026-04-08T16:24:04.599Z",
+        "lastHeartbeatAt": "2026-04-08T16:24:04.599Z"
+      }
+    ],
+    "edges": [
+      {
+        "id": "prod-smoke-20260409-012342-root->prod-smoke-20260409-012342-child:spawned",
+        "from": "prod-smoke-20260409-012342-root",
+        "to": "prod-smoke-20260409-012342-child",
+        "relation": "spawned",
+        "createdAt": "2026-04-08T16:24:04.599Z"
+      }
+    ],
+    "handoffs": [
+      {
+        "missionId": "prod-smoke-20260409-012342-mission",
+        "handoffId": "prod-smoke-20260409-012342-handoff",
+        "fromWorkerId": "prod-smoke-20260409-012342-root",
+        "toWorkerId": "prod-smoke-20260409-012342-child",
+        "handoffType": "artifact",
+        "title": "Smoke Handoff",
+        "summary": "Artifact handoff for production smoke",
+        "artifactRefs": [
+          ".control-plane/prod-smoke/artifact.txt"
+        ],
+        "createdAt": "2026-04-08T16:24:11.346Z"
+      }
+    ]
+  }
+}
