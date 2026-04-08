@@ -13,8 +13,9 @@
   "payload": {
     "title": "debug rotate"
   },
-  "status": "emitted",
-  "attemptCount": 0,
+  "status": "completed",
+  "attemptCount": 1,
   "createdAt": "2026-04-08T17:04:16.350Z",
-  "updatedAt": "2026-04-08T17:04:16.350Z"
+  "updatedAt": "2026-04-08T17:04:16.350Z",
+  "latestReason": "executed_inline"
 }
