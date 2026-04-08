@@ -2,7 +2,8 @@
   "sessionId": "debug-rotate-20260409-020411-session",
   "actorId": "debugger",
   "role": "delivery",
-  "status": "active",
+  "status": "revoked",
   "createdAt": "2026-04-08T17:04:13.059Z",
-  "expiresAt": "2026-04-08T19:04:13.059Z"
+  "expiresAt": "2026-04-08T19:04:13.059Z",
+  "revokedAt": "2026-04-08T17:10:53.601Z"
 }
