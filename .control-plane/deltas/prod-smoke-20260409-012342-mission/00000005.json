@@ -1,0 +1,17 @@
+{
+  "type": "worker.updated",
+  "worker": {
+    "missionId": "prod-smoke-20260409-012342-mission",
+    "workerId": "prod-smoke-20260409-012342-root",
+    "role": "operator",
+    "phase": "qa",
+    "status": "completed",
+    "title": "Smoke Root",
+    "summary": "Root smoke worker done",
+    "progress": 100,
+    "startedAt": "2026-04-08T16:23:59.154Z",
+    "updatedAt": "2026-04-08T16:24:14.711Z",
+    "completedAt": "2026-04-08T16:24:14.711Z",
+    "lastHeartbeatAt": "2026-04-08T16:24:14.711Z"
+  }
+}
