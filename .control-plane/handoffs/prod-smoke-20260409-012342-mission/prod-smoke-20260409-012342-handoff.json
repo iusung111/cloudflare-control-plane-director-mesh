@@ -1,0 +1,13 @@
+{
+  "missionId": "prod-smoke-20260409-012342-mission",
+  "handoffId": "prod-smoke-20260409-012342-handoff",
+  "fromWorkerId": "prod-smoke-20260409-012342-root",
+  "toWorkerId": "prod-smoke-20260409-012342-child",
+  "handoffType": "artifact",
+  "title": "Smoke Handoff",
+  "summary": "Artifact handoff for production smoke",
+  "artifactRefs": [
+    ".control-plane/prod-smoke/artifact.txt"
+  ],
+  "createdAt": "2026-04-08T16:24:11.346Z"
+}
