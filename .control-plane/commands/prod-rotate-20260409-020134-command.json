@@ -13,8 +13,9 @@
   "payload": {
     "title": "production auth rotation smoke"
   },
-  "status": "emitted",
-  "attemptCount": 0,
+  "status": "completed",
+  "attemptCount": 1,
   "createdAt": "2026-04-08T17:01:41.970Z",
-  "updatedAt": "2026-04-08T17:01:41.970Z"
+  "updatedAt": "2026-04-08T17:01:41.970Z",
+  "latestReason": "executed_inline"
 }
