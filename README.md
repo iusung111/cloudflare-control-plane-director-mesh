@@ -1,73 +1,183 @@
-# Cloudflare Control Plane / Director Mesh
+# Cloudflare Control Plane Director Mesh
 
-This repository implements a Cloudflare-based control plane that coordinates agent delivery work while keeping GitHub as the source of truth for all persistent state and artifacts.
+A Cloudflare Worker control-plane baseline rebuilt around the requirement docs, with clear layering and one deployable worker entrypoint.
 
-## Quick Start & Execution
+## Structure
 
-### 1. Environment Variables
-The following environment variables must be configured in `wrangler.toml` or as secrets:
+```text
+apps/
+  worker/
+    src/
+      api/
+      live/
+      mcp/
+      queue/
+      router/
+      ui-shell/
+packages/
+  adapters/
+  application/
+  contracts/
+  domain/
+  projections/
+  shared/
+tests/
+```
 
-- `GITHUB_OWNER`: GitHub organization or user name.
-- `GITHUB_REPO`: The repository name where state is stored.
-- `GITHUB_TOKEN`: A GitHub Personal Access Token (PAT) with repo scope.
-- `GITHUB_BRANCH`: **Must be explicitly configured** (e.g., `master` or `main`). It must match the default branch of the target repository.
+## Key Principles
 
-### 2. Validation Commands
-Before deploying or committing, run these commands:
+- Single Worker entrypoint: `apps/worker/src/index.ts`
+- One deployable surface for `/app`, `/api`, `/mcp`, `/healthz`
+- Domain rules live under `packages/domain`
+- Routes call application services only
+- Read models and summaries are projection-driven
+- Durable Objects handle coordination/live state
+- Queues handle retry and deferred execution
+
+## API Surfaces
+
+- `GET /healthz`
+- `GET /app`
+- `GET /api/commands`
+- `POST /api/commands`
+- `GET /api/commands/:id`
+- `POST /api/commands/:id/approve`
+- `POST /api/commands/:id/reject`
+- `POST /api/commands/:id/retry`
+- `POST /api/commands/:id/cancel`
+- `GET,POST /api/sessions`
+- `POST /api/sessions/:id/renew`
+- `POST /api/sessions/:id/revoke`
+- `GET,POST /api/leases`
+- `POST /api/leases/:id/release`
+- `POST /api/leases/:id/revoke`
+- `GET /api/events`
+- `GET /api/events/:id`
+- `GET,POST /api/missions`
+- `GET /api/missions/:id`
+- `GET /api/missions/:id/graph`
+- `GET /api/missions/:id/graph/live`
+- `GET /api/missions/:id/workers`
+- `GET /api/missions/:id/learnings`
+- `GET /api/missions/:id/retro`
+- `GET /api/missions/:id/handoffs`
+- `GET /api/missions/:id/evidence`
+- `GET /api/missions/:id/playback`
+- `GET /api/missions/:id/live`
+- `POST /api/missions/:id/workers`
+- `POST /api/missions/:id/handoffs`
+- `GET /api/queue`
+- `GET /api/quality`
+- `GET /api/release-gate`
+- `GET,POST /api/learnings`
+- `GET /api/learnings/:id`
+- `GET /api/retro`
+- `GET /api/runs`
+- `GET /api/state/summary`
+- `GET,POST /api/approvals/yolo`
+- `GET /api/approvals/scoped`
+- `POST /api/approvals/scoped`
+- `DELETE /api/approvals/scoped/:id`
+- `GET /api/alerts`
+- `GET /api/alerts/log`
+- `POST /api/alerts/:id/read`
+- `POST /api/alerts/:id/dismiss`
+- `GET /api/alerts/:id/target`
+
+## Mission Graph Modes
+
+- Full graph: `GET /api/missions/:id/graph`
+- Live graph: `GET /api/missions/:id/graph/live`
+
+The live graph applies cooling, collapse, and archive rules. Playback and worker search keep the full trace.
+
+## MCP
+
+The worker exposes both a thin HTTP MCP gateway and a JSON-RPC MCP transport.
+
+Thin HTTP:
+
+- `GET /mcp/resources/*`
+- `POST /mcp/tools/*`
+
+JSON-RPC / Streamable HTTP style:
+
+- `POST /mcp`
+- `GET /mcp` with `Accept: text/event-stream`
+- `DELETE /mcp`
+
+Supported JSON-RPC methods:
+
+- `initialize`
+- `ping`
+- `tools/list`
+- `tools/call`
+- `resources/list`
+- `resources/templates/list`
+- `resources/read`
+- `resources/subscribe`
+- `resources/unsubscribe`
+
+Key MCP resources and tools include:
+
+- `state://summary`
+- `quality://summary`
+- `release-gate://summary`
+- `alerts://current`
+- `alerts://log`
+- `learnings://recent`
+- `retro://summary`
+- `mission://{id}/graph`
+- `mission://{id}/live`
+- `mission://{id}/playback`
+- `mission://{id}/learnings`
+- `mission://{id}/retro`
+- `submit_command`
+- `create_mission`
+- `upsert_worker`
+- `record_handoff`
+- `capture_learning`
+- `read_alert`
+- `dismiss_alert`
+
+SSE supports backlog drain, `Last-Event-ID` replay/resume, and long-lived `follow=1` fan-out streams.
+
+## Operator Console
+
+`/app` serves an interactive client-side console shell that:
+
+- Boots from the server snapshot and refreshes live data
+- Shows mission selection, live graph, playback, alerts, release checks, learnings, and retro
+- Connects to mission live WebSocket updates
+- Allows in-console alert read/dismiss actions
+- Allows in-console learning capture
+
+## Runtime Bindings
+
+GitHub backing store settings:
+
+- `GITHUB_OWNER`
+- `GITHUB_REPO`
+- `GITHUB_TOKEN`
+- `GITHUB_BRANCH`
+
+Cloudflare bindings:
+
+- `MISSION_ROOM` Durable Object binding
+- `CONTROL_QUEUE` Queue binding
+
+`wrangler.toml` includes these bindings and the `MissionRoomDurableObject` migration.
+
+## Validation
 
 ```bash
-# Type check
-npx tsc --noEmit
-
-# Run tests
+npm run typecheck
 npm test
-
-# Build/Deploy dry-run
-npx wrangler deploy --dry-run
+npm run build
 ```
 
-### 3. Worker Endpoints
-- `GET /health`: Returns service status.
-- `POST /commands`: Processes control plane commands.
+## Current Status
 
-### 4. Command Payload Example
-```json
-{
-  "commandId": "cmd_123",
-  "dedupKey": "unique_operation_id",
-  "action": "task_create",
-  "resource": {
-    "repo": "my-org/my-repo",
-    "branch": "feature-x",
-    "path": "src/module.ts"
-  },
-  "payload": {
-    "title": "Fix bug in module",
-    "description": "...",
-    "explicitLive": true
-  }
-}
-```
+The current scope includes the interactive console shell, MCP JSON-RPC transport, follow-capable SSE, mission live room wiring, queue retry flow, alert lifecycle, learning capture, retro summary, release gate, and quality aggregation. Remaining work is operational hardening and product polish rather than missing core surfaces.
 
-- **Conflict Detection**: `dedupKey` is used for idempotent operations. `conflictKey` (generated internally) ensures no multi-writer conflicts on the same resource.
-- **Live Deployment**: Actions involving live deployment (e.g., `deploy_live`) require `payload.explicitLive: true`.
-
----
-
-## Documentation Structure
-
-- **CLI start baseline**: `00_design_baseline.md`
-- **CLI current progress**: `01_current_progress.md`
-- **System shape**: `docs/derived/01_overview.md`
-- **Runtime boundaries**: `docs/derived/02_runtime_boundary.md`
-- **Guardrails**: `docs/derived/03_guardrail.md`
-- **State format**: `docs/derived/05_state_format.md`
-- **Decision records**: `docs/adr/`
-- **Machine-readable index**: `registry/doc_index.json`
-
-## Rules & Principles
-1. **GitHub as Source of Truth**: Cloudflare is the control plane; GitHub is the persistent storage.
-2. **Event-Driven**: All state changes are driven by events.
-3. **Explicit Approval**: Live deployments require explicit approval/payload flags.
-4. **No Multi-Writer**: Concurrent modifications to the same resource are blocked.
-5. **No Branch Fallbacks**: The target branch must be explicitly configured.
+Repository hygiene is also normalized for the new structure: generated artifacts are ignored via `.gitignore`, `node_modules` is no longer intended to be versioned, and the old `src/` plus `runtime/` prototype tree has been removed.

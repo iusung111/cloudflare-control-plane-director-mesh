@@ -10,6 +10,6 @@
     "skipLibCheck": true,
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts", "runtime/**/*.ts"],
+  "include": ["apps/**/*.ts", "packages/**/*.ts", "tests/**/*.ts"],
   "exclude": ["node_modules"]
 }

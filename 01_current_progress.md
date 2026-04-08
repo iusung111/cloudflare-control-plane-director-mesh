@@ -1,51 +1,64 @@
-# 01_current_progress (Updated 2026-04-07)
+# 01_current_progress (Updated 2026-04-08)
 
-## Purpose
-This file summarizes the current implementation state for the Cloudflare Control Plane prototype.
+## Delivered So Far
 
-## Current status (Fixed Core Defects)
-- **Core Runtime:** Fully wired and compilable. Dependency injection supported for testing.
-- **Import Hierarchy:** Fixed. Clean separation between `store.ts`, `types.ts`, and `github_store.ts`.
-- **Self-Lock Bug:** Fixed. `hasActiveLock` now accepts `exceptLeaseId` to avoid conflicting with self.
-- **Deploy Live Path:** Fixed. Double-blocking removed; `guardrail` handles policy and `executor` delegates to registered handlers.
-- **GitHub Store Safety:**
-  - `GITHUB_BRANCH` is now **strictly mandatory**. No fallback to "main" or "master" is allowed.
-  - Dedup paths are now safe (using hashed filenames) and store metadata in JSON.
-  - UTF-8 safe base64 encoding/decoding using `TextEncoder`/`TextDecoder`.
-- **Validation:** `resource` normalization and `conflictKey` generation are now consistent across all stores.
-- **Verification:** 
-  - `npx tsc --noEmit` passing.
-  - `npm test` passing with expanded coverage (encoding, path safety, invalid session/lease).
-  - `npx wrangler deploy --dry-run` passing.
+- Rebuilt the worker around a fresh layered structure instead of extending the old prototype
+- Added command, session, lease, approval, alert, mission, queue, run, and state surfaces
+- Added mission graph, playback, evidence, and live mission APIs
+- Wired Cloudflare Durable Objects for mission live rooms
+- Wired Cloudflare Queues for deferred retry flow
+- Added release gate and quality aggregation
+- Added live graph cooling/collapse/archive projection
+- Preserved completed-worker traceability through playback and worker search
+- Added JSON-RPC MCP transport with session headers and SSE drain
+- Added `Last-Event-ID` replay/resume for MCP SSE
+- Added long-lived `follow=1` SSE fan-out for concurrent MCP subscribers
+- Added learning capture and retrospective summary surfaces
+- Added mission-scoped learning and retro retrieval
+- Added alert read/dismiss persistence and lifecycle endpoints
+- Replaced the static `/app` shell with an interactive client-side operator console
+- Added deterministic failure-path coverage for queue retry and mission-room snapshot restore
+- Removed the legacy `src/` and `runtime/` prototype tree from the repository
+- Added `.gitignore` and prepared `node_modules` to be dropped from version control
 
-## Implementation Details
-- `runtime/resource_key.ts`: Resource normalization (`normalizeResourceScope`) and `conflictKey` generation.
-- `runtime/encoding.ts`: UTF-8 safe base64 helpers.
-- `runtime/github_path.ts`: Safe path generation for GitHub storage.
-- `runtime/executor.ts`: `MissionExecutor` with handler registration and mock support.
-- `runtime/test/kernel.test.ts`: Expanded core invariant tests (invalid session/lease).
-- `runtime/test/encoding.test.ts`: New encoding roundtrip tests (ASCII, UTF-8, JSON).
-- `runtime/test/github_path.test.ts`: New path safety and consistency tests.
-- `runtime/test/runtime.test.ts`: Integration tests for full flow.
+## Notable Endpoints
 
-## Created/Updated files
-- `runtime/resource_key.ts`: Added normalization logic
-- `runtime/store.ts`: Updated `InMemoryRuntimeStore` to use normalization
-- `runtime/github_store.ts`: Updated `GitHubRuntimeStore` to use normalization and require branch
-- `src/index.ts`: Enforced mandatory `GITHUB_BRANCH`
-- `README.md`: Added execution and environment documentation
-- `runtime/test/kernel.test.ts`: Added invalid lease/session cases
-- `runtime/test/encoding.test.ts`: New file
-- `runtime/test/github_path.test.ts`: New file
-- `wrangler.toml`: Updated configuration comments
+- `GET /api/missions/:id/graph/live`
+- `GET /api/missions/:id/learnings`
+- `GET /api/missions/:id/retro`
+- `GET /api/quality`
+- `GET /api/release-gate`
+- `GET,POST /api/learnings`
+- `GET /api/retro`
+- `POST /api/alerts/:id/read`
+- `POST /api/alerts/:id/dismiss`
+- `POST /mcp`
+- `GET /mcp`
+- `DELETE /mcp`
+- `GET /mcp?follow=1`
+- `GET /mcp/resources/quality-summary`
+- `GET /mcp/resources/release-gate`
+- `GET /mcp/resources/learnings-recent`
+- `GET /mcp/resources/retro-summary`
+- `GET /mcp/resources/alerts-log`
+- `GET /mcp/resources/mission-live-graph/:id`
+- `GET /mcp/resources/mission-learnings/:id`
+- `GET /mcp/resources/mission-retro/:id`
 
-## Next steps
-- **Real Effect Handlers:** Implement Octokit/GitHub API calls for `github_write`, `github_branch_create`, etc.
-- **Session Broker:** Implement logic to issue and revoke sessions/leases via API.
-- **CLI/GUI Surface:** Connect the worker to a user-facing tool for command submission.
+## Validation Status
 
-## Working rules
-- All writes must go to `.control-plane/` in GitHub.
-- `deploy_live` requires `payload.explicitLive: true`.
-- `conflictKey` must match `makeConflictKey(resource)`.
-- `GITHUB_BRANCH` must be explicitly configured.
+- `npm run typecheck` passes
+- `npm test` passes
+- `npm run build` passes
+- `wrangler deploy --dry-run` sees both `MISSION_ROOM` and `CONTROL_QUEUE`
+
+## Scope Status
+
+- The previously called-out gaps around interactive console UI, MCP follow streams, alert lifecycle handling, and mission-scoped learn/retro retrieval are now implemented
+- Remaining work is hardening and product refinement rather than missing core platform surfaces
+
+## Notes
+
+- Build scope is currently `apps/**`, `packages/**`, and `tests/**`
+- Legacy prototype paths under old `src/` and `runtime/` have been removed
+- `node_modules` has been removed from the git index and is now ignored going forward

@@ -1,6 +1,26 @@
 name = "cloudflare-control-plane-director-mesh"
-main = "src/index.ts"
+main = "apps/worker/src/index.ts"
 compatibility_date = "2024-01-01"
+
+[[durable_objects.bindings]]
+name = "MISSION_ROOM"
+class_name = "MissionRoomDurableObject"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MissionRoomDurableObject"]
+
+[[queues.producers]]
+binding = "CONTROL_QUEUE"
+queue = "cloudflare-control-plane-director-mesh-control"
+
+[[queues.consumers]]
+queue = "cloudflare-control-plane-director-mesh-control"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 3
+dead_letter_queue = "cloudflare-control-plane-director-mesh-dlq"
+retry_delay = 30
 
 [vars]
 # GITHUB_OWNER = "your-org"
