@@ -1,0 +1,20 @@
+{
+  "commandId": "app-only-20260409-015245-command",
+  "dedupKey": "app-only-20260409-015245-dedup",
+  "sessionId": "app-only-20260409-015245-session",
+  "leaseId": "app-only-20260409-015245-lease",
+  "action": "deploy_live",
+  "resource": {
+    "branch": "master",
+    "path": ".control-plane/app-only/app-only-20260409-015245.json",
+    "repo": "iusung111/cloudflare-control-plane-director-mesh"
+  },
+  "conflictKey": "iusung111/cloudflare-control-plane-director-mesh:master:.control-plane/app-only/app-only-20260409-015245.json",
+  "payload": {
+    "note": "github app only smoke"
+  },
+  "status": "emitted",
+  "attemptCount": 0,
+  "createdAt": "2026-04-08T16:52:50.755Z",
+  "updatedAt": "2026-04-08T16:52:50.755Z"
+}
