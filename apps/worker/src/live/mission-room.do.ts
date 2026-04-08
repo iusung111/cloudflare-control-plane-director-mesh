@@ -49,11 +49,15 @@ export class MissionRoomDurableObject {
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
-    ws.close(code, reason);
+    void ws;
+    void code;
+    void reason;
   }
 
   async webSocketError(ws: WebSocket): Promise<void> {
-    ws.close(1011, "mission_room_error");
+    try {
+      ws.close(1011, "mission_room_error");
+    } catch {}
   }
 
   private broadcast(payload: string): void {

@@ -1,5 +1,6 @@
 import { GitHubControlPlaneStore } from "../../../packages/adapters/src/github/github-control-plane.store";
 import type { ControlPlaneStore } from "../../../packages/adapters/src/store/control-plane-store";
+import { MemoryControlPlaneStore } from "../../../packages/adapters/src/store/memory-control-plane.store";
 import { ListAlertsService } from "../../../packages/application/src/approvals/list-alerts.service";
 import { ScopedApprovalService } from "../../../packages/application/src/approvals/scoped-approval.service";
 import { SubmitCommandService } from "../../../packages/application/src/commands/submit-command.service";
@@ -63,6 +64,8 @@ export interface AppServices {
   yoloMode: YoloModeService;
 }
 
+let fallbackMemoryStore: ControlPlaneStore | undefined;
+
 export function createServices(
   env?: WorkerEnv,
   overrides?: { store?: ControlPlaneStore },
@@ -99,10 +102,24 @@ export function createServices(
 }
 
 function createGitHubStore(env?: WorkerEnv): ControlPlaneStore {
+  if (!hasGitHubStoreConfig(env)) {
+    fallbackMemoryStore ??= new MemoryControlPlaneStore();
+    return fallbackMemoryStore;
+  }
+
   return new GitHubControlPlaneStore({
     owner: env?.GITHUB_OWNER ?? "",
     repo: env?.GITHUB_REPO ?? "",
     token: env?.GITHUB_TOKEN ?? "",
     branch: env?.GITHUB_BRANCH ?? "",
   });
+}
+
+function hasGitHubStoreConfig(env?: WorkerEnv): boolean {
+  return Boolean(
+    env?.GITHUB_OWNER?.trim()
+    && env?.GITHUB_REPO?.trim()
+    && env?.GITHUB_TOKEN?.trim()
+    && env?.GITHUB_BRANCH?.trim(),
+  );
 }
