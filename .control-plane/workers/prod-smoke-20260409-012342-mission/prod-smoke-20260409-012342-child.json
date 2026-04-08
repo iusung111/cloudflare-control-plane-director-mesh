@@ -1,0 +1,15 @@
+{
+  "missionId": "prod-smoke-20260409-012342-mission",
+  "workerId": "prod-smoke-20260409-012342-child",
+  "parentWorkerId": "prod-smoke-20260409-012342-root",
+  "role": "reviewer",
+  "phase": "qa",
+  "status": "completed",
+  "title": "Smoke Child",
+  "summary": "Child smoke worker",
+  "progress": 100,
+  "startedAt": "2026-04-08T16:24:04.599Z",
+  "updatedAt": "2026-04-08T16:24:04.599Z",
+  "completedAt": "2026-04-08T16:24:04.599Z",
+  "lastHeartbeatAt": "2026-04-08T16:24:04.599Z"
+}
