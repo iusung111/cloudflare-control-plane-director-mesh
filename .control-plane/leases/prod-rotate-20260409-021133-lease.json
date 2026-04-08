@@ -1,0 +1,12 @@
+{
+  "leaseId": "prod-rotate-20260409-021133-lease",
+  "sessionId": "prod-rotate-20260409-021133-session",
+  "resource": {
+    "repo": "iusung111/cloudflare-control-plane-director-mesh",
+    "branch": "master",
+    "path": "ops/smoke/prod-rotate-20260409-021133.txt"
+  },
+  "status": "active",
+  "createdAt": "2026-04-08T17:11:38.861Z",
+  "expiresAt": "2026-04-08T17:41:38.861Z"
+}
