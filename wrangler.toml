@@ -33,8 +33,12 @@ retry_delay = 30
 [vars]
 # GITHUB_OWNER = "your-org"
 # GITHUB_REPO = "your-repo"
-# GITHUB_TOKEN = "your-github-token"
 # GITHUB_BRANCH = "master" (Must be explicitly configured)
+# GITHUB_TOKEN = "your-fine-grained-pat" (fallback path)
+# GITHUB_APP_ID = "your-app-id"
+# GITHUB_APP_CLIENT_ID = "Iv1.your-client-id" (preferred issuer for JWT)
+# GITHUB_INSTALLATION_ID = "your-installation-id"
+# GITHUB_PRIVATE_KEY = "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----" (set via `wrangler secret put`)
 # CONTROL_PLANE_OPERATOR_TOKEN = "operator-bearer-token"
 # CONTROL_PLANE_VIEWER_TOKEN = "viewer-bearer-token"
 # CONTROL_PLANE_APP_PASSWORD = "browser-login-password"

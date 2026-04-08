@@ -1,4 +1,5 @@
 import { GitHubControlPlaneStore } from "../../../packages/adapters/src/github/github-control-plane.store";
+import type { GitHubStoreConfig } from "../../../packages/adapters/src/github/github-contents.client";
 import type { ControlPlaneStore } from "../../../packages/adapters/src/store/control-plane-store";
 import { MemoryControlPlaneStore } from "../../../packages/adapters/src/store/memory-control-plane.store";
 import { ListAlertsService } from "../../../packages/application/src/approvals/list-alerts.service";
@@ -29,6 +30,10 @@ export interface WorkerEnv {
   GITHUB_REPO?: string;
   GITHUB_TOKEN?: string;
   GITHUB_BRANCH?: string;
+  GITHUB_APP_ID?: string;
+  GITHUB_APP_CLIENT_ID?: string;
+  GITHUB_INSTALLATION_ID?: string;
+  GITHUB_PRIVATE_KEY?: string;
   CONTROL_PLANE_OPERATOR_TOKEN?: string;
   CONTROL_PLANE_VIEWER_TOKEN?: string;
   CONTROL_PLANE_APP_PASSWORD?: string;
@@ -102,24 +107,54 @@ export function createServices(
 }
 
 function createGitHubStore(env?: WorkerEnv): ControlPlaneStore {
-  if (!hasGitHubStoreConfig(env)) {
+  const config = resolveGitHubStoreConfig(env);
+  if (!config) {
     fallbackMemoryStore ??= new MemoryControlPlaneStore();
     return fallbackMemoryStore;
   }
 
-  return new GitHubControlPlaneStore({
-    owner: env?.GITHUB_OWNER ?? "",
-    repo: env?.GITHUB_REPO ?? "",
-    token: env?.GITHUB_TOKEN ?? "",
-    branch: env?.GITHUB_BRANCH ?? "",
-  });
+  return new GitHubControlPlaneStore(config);
 }
 
-function hasGitHubStoreConfig(env?: WorkerEnv): boolean {
-  return Boolean(
-    env?.GITHUB_OWNER?.trim()
-    && env?.GITHUB_REPO?.trim()
-    && env?.GITHUB_TOKEN?.trim()
-    && env?.GITHUB_BRANCH?.trim(),
-  );
+export function resolveGitHubStoreConfig(env?: WorkerEnv): GitHubStoreConfig | null {
+  const owner = env?.GITHUB_OWNER?.trim();
+  const repo = env?.GITHUB_REPO?.trim();
+  const branch = env?.GITHUB_BRANCH?.trim();
+  if (!owner || !repo || !branch) {
+    return null;
+  }
+
+  const appPrivateKey = env?.GITHUB_PRIVATE_KEY?.trim();
+  const installationId = env?.GITHUB_INSTALLATION_ID?.trim();
+  const appId = env?.GITHUB_APP_ID?.trim();
+  const clientId = env?.GITHUB_APP_CLIENT_ID?.trim();
+  if (appPrivateKey && installationId && (clientId || appId)) {
+    return {
+      owner,
+      repo,
+      branch,
+      auth: {
+        kind: "app",
+        appId,
+        clientId,
+        installationId,
+        privateKey: appPrivateKey,
+      },
+    };
+  }
+
+  const token = env?.GITHUB_TOKEN?.trim();
+  if (!token) {
+    return null;
+  }
+
+  return {
+    owner,
+    repo,
+    branch,
+    auth: {
+      kind: "token",
+      token,
+    },
+  };
 }

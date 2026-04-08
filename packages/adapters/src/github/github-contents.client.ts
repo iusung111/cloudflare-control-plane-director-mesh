@@ -1,17 +1,22 @@
 import { decodeBase64, encodeBase64 } from "./base64";
+import { GitHubAuthProvider, type GitHubAuthConfig } from "./github-auth";
 
 export interface GitHubStoreConfig {
   owner: string;
   repo: string;
-  token: string;
   branch: string;
+  auth: GitHubAuthConfig;
 }
 
 export class GitHubContentsClient {
+  private readonly authProvider: GitHubAuthProvider;
+
   constructor(private readonly config: GitHubStoreConfig) {
-    if (!config.owner || !config.repo || !config.token || !config.branch) {
+    if (!config.owner || !config.repo || !config.branch) {
       throw new Error("github_store_config_is_incomplete");
     }
+
+    this.authProvider = new GitHubAuthProvider(config.auth);
   }
 
   async exists(path: string): Promise<boolean> {
@@ -56,15 +61,17 @@ export class GitHubContentsClient {
     return Array.isArray(payload) ? payload.map(toEntry) : [];
   }
 
-  private request(path: string, method: string, body?: unknown): Promise<Response> {
+  private async request(path: string, method: string, body?: unknown): Promise<Response> {
     const ref = method === "GET" || method === "HEAD" ? `?ref=${this.config.branch}` : "";
     const url = `https://api.github.com/repos/${this.config.owner}/${this.config.repo}/contents/${path}${ref}`;
+    const authorization = await this.authProvider.getAuthorizationHeader();
     return fetch(url, {
       method,
       headers: {
-        Authorization: `token ${this.config.token}`,
-        Accept: "application/vnd.github.v3+json",
+        Authorization: authorization,
+        Accept: "application/vnd.github+json",
         "User-Agent": "cloudflare-control-plane-director-mesh",
+        "X-GitHub-Api-Version": "2022-11-28",
       },
       body: body ? JSON.stringify(body) : undefined,
     });

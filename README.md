@@ -182,8 +182,48 @@ GitHub backing store settings:
 
 - `GITHUB_OWNER`
 - `GITHUB_REPO`
-- `GITHUB_TOKEN`
 - `GITHUB_BRANCH`
+- `GITHUB_TOKEN`
+
+GitHub App backing store settings:
+
+- `GITHUB_APP_ID`
+- `GITHUB_APP_CLIENT_ID`
+- `GITHUB_INSTALLATION_ID`
+- `GITHUB_PRIVATE_KEY`
+
+When both static token and GitHub App credentials are configured, the worker prefers the GitHub App path and mints short-lived installation tokens on demand.
+
+## GitHub App Setup
+
+Use a GitHub App for production-backed state writes instead of a long-lived personal token.
+
+1. Create a GitHub App and install it on `iusung111/cloudflare-control-plane-director-mesh` or your target repository only.
+2. Grant repository permission `Contents: Read and write`.
+3. Record the App identifiers:
+   - `App ID`
+   - `Client ID` (`Iv1...`, recommended JWT issuer)
+   - `Installation ID`
+4. Generate a private key for the app and store the PEM contents as a Cloudflare secret.
+5. Configure Worker secrets:
+
+```bash
+npx wrangler secret put GITHUB_OWNER
+npx wrangler secret put GITHUB_REPO
+npx wrangler secret put GITHUB_BRANCH
+npx wrangler secret put GITHUB_APP_ID
+npx wrangler secret put GITHUB_APP_CLIENT_ID
+npx wrangler secret put GITHUB_INSTALLATION_ID
+npx wrangler secret put GITHUB_PRIVATE_KEY
+```
+
+Recommended values:
+
+- `GITHUB_OWNER=iusung111`
+- `GITHUB_REPO=cloudflare-control-plane-director-mesh`
+- `GITHUB_BRANCH=master`
+
+The worker accepts both `-----BEGIN RSA PRIVATE KEY-----` (PKCS#1, GitHub default download) and `-----BEGIN PRIVATE KEY-----` (PKCS#8) PEM formats.
 
 Cloudflare bindings:
 
