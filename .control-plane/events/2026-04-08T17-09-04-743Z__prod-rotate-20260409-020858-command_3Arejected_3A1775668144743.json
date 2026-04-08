@@ -1,0 +1,20 @@
+{
+  "eventId": "prod-rotate-20260409-020858-command:rejected:1775668144743",
+  "commandId": "prod-rotate-20260409-020858-command",
+  "sessionId": "prod-rotate-20260409-020858-session",
+  "leaseId": "prod-rotate-20260409-020858-lease",
+  "type": "COMMAND_REJECTED",
+  "status": "rejected",
+  "action": "github_write",
+  "resource": {
+    "branch": "master",
+    "path": "apps/worker/src/index.ts",
+    "repo": "iusung111/cloudflare-control-plane-director-mesh"
+  },
+  "reason": "invalid_lease",
+  "payload": {
+    "title": "production auth rotation smoke",
+    "conflictKey": "iusung111/cloudflare-control-plane-director-mesh:master:apps/worker/src/index.ts"
+  },
+  "createdAt": "2026-04-08T17:09:04.743Z"
+}
