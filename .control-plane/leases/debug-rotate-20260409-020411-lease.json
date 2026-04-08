@@ -6,7 +6,8 @@
     "branch": "master",
     "path": "apps/worker/src/index.ts"
   },
-  "status": "active",
+  "status": "released",
   "createdAt": "2026-04-08T17:04:15.107Z",
-  "expiresAt": "2026-04-08T17:34:15.107Z"
+  "expiresAt": "2026-04-08T17:34:15.107Z",
+  "releasedAt": "2026-04-08T17:10:51.920Z"
 }
