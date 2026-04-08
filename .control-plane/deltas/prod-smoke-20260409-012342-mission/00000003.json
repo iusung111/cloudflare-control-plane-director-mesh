@@ -1,0 +1,10 @@
+{
+  "type": "edge.created",
+  "edge": {
+    "id": "prod-smoke-20260409-012342-root->prod-smoke-20260409-012342-child:spawned",
+    "from": "prod-smoke-20260409-012342-root",
+    "to": "prod-smoke-20260409-012342-child",
+    "relation": "spawned",
+    "createdAt": "2026-04-08T16:24:04.599Z"
+  }
+}
