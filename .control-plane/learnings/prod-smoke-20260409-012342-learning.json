@@ -1,0 +1,18 @@
+{
+  "learningId": "prod-smoke-20260409-012342-learning",
+  "scope": "mission",
+  "kind": "note",
+  "title": "Production smoke validation",
+  "summary": "GitHub-backed write path and mission live updates succeeded in production.",
+  "createdAt": "2026-04-08T16:25:07.173Z",
+  "createdBy": "prod-smoke",
+  "missionId": "prod-smoke-20260409-012342-mission",
+  "repoKey": "iusung111/cloudflare-control-plane-director-mesh",
+  "tags": [
+    "production",
+    "smoke"
+  ],
+  "artifactRefs": [
+    ".control-plane/prod-smoke/report.md"
+  ]
+}
