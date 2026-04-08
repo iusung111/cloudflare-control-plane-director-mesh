@@ -6,6 +6,8 @@ import type { ReleaseGateSummary } from "./release";
 import type { AlertRecord } from "./alert";
 import type { ScopedApprovalRecord } from "./approval";
 import type { CommandRecord } from "./command";
+import type { ObservabilitySummary } from "./observability";
+import type { OperatorRequestRecord } from "./operator-request";
 import type { LeaseRecord, SessionRecord, YoloMode } from "./session";
 
 export interface StatusCount {
@@ -24,11 +26,19 @@ export interface CommandCount {
   cancelled: number;
 }
 
+export interface RequestCount {
+  queuedForOrchestrator: number;
+  claimed: number;
+  awaitingApproval: number;
+  browserActionPending: number;
+}
+
 export interface StateSummary {
   generatedAt: string;
   sessions: StatusCount;
   leases: StatusCount;
   commands: CommandCount;
+  requests?: RequestCount;
   yoloMode: YoloMode;
   recentEventAt?: string;
 }
@@ -38,6 +48,8 @@ export interface ConsoleSnapshot {
   commands?: CommandRecord[];
   deadLetters?: CommandRecord[];
   learnings?: LearningRecord[];
+  observability?: ObservabilitySummary;
+  requests?: OperatorRequestRecord[];
   retro?: RetroSummary;
   scopedApprovals?: ScopedApprovalRecord[];
   summary: StateSummary;

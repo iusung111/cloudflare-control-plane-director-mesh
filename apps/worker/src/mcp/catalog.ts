@@ -1,5 +1,14 @@
-import type { AcquireLeaseInput, CaptureLearningInput, CommandRequest, IssueSessionInput } from "../../../../packages/contracts/src";
+import type {
+  AcquireLeaseInput,
+  CaptureLearningInput,
+  ClaimOperatorRequestInput,
+  CommandRequest,
+  IssueSessionInput,
+  SubmitOperatorRequestInput,
+  UpdateOperatorRequestStatusInput,
+} from "../../../../packages/contracts/src";
 import { ControlPlaneError } from "../../../../packages/shared/src/control-plane-error";
+import { enqueueAlertFanoutIfNeeded, missionIdFromCommand, syncRelatedRequestsForCommand } from "../commands/command-side-effects";
 import type { AppServices } from "../services";
 
 export interface McpToolDefinition {
@@ -46,14 +55,19 @@ export const MCP_TOOLS: McpToolDefinition[] = [
   tool("cancel_run", "Cancel a run", objectSchema(["commandId"]), false, true, false),
   tool("requeue_dead_letter", "Requeue a dead-lettered command", objectSchema(["commandId"]), false, true, false),
   tool("dismiss_dead_letter", "Dismiss a dead-lettered command", objectSchema(["commandId"]), false, true, false),
+  tool("submit_operator_request", "Submit an operator request for the main orchestrator queue", objectSchema(["requestId", "actorId", "queue", "title", "prompt"]), false, true, true),
+  tool("claim_request", "Claim a queued operator request", objectSchema(["requestId", "owner"]), false, true, false),
+  tool("update_request_status", "Update an operator request lifecycle state", objectSchema(["requestId", "status"]), false, true, false),
   tool("set_yolo_mode", "Set YOLO mode", objectSchema(["enabled", "updatedBy"]), false, true, true),
 ];
 
 const STATIC_RESOURCES: McpResourceDefinition[] = [
   resource("state://summary", "state-summary", "Control-plane state summary"),
+  resource("observability://summary", "observability-summary", "Operational observability summary"),
   resource("events://recent", "events-recent", "Recent mission events"),
   resource("queue://active", "queue-active", "Queued commands"),
   resource("queue://dead-letter", "queue-dead-letter", "Dead-lettered commands"),
+  resource("requests://active", "requests-active", "Operator requests awaiting orchestration"),
   resource("learnings://recent", "learnings-recent", "Recent learnings"),
   resource("retro://summary", "retro-summary", "Retrospective summary"),
   resource("quality://summary", "quality-summary", "Quality aggregation summary"),
@@ -73,6 +87,7 @@ export const MCP_RESOURCE_TEMPLATES: McpResourceTemplate[] = [
   template("mission://{id}/playback", "mission-playback", "Mission playback"),
   template("mission://{id}/evidence", "mission-evidence", "Mission evidence"),
   template("mission://{id}/learnings", "mission-learnings", "Mission learnings"),
+  template("mission://{id}/requests", "mission-requests", "Mission operator requests"),
   template("mission://{id}/retro", "mission-retro", "Mission retrospective summary"),
 ];
 
@@ -86,9 +101,11 @@ export async function listMcpResources(services: AppServices): Promise<McpResour
 
 export async function readMcpResource(services: AppServices, uri: string): Promise<unknown> {
   if (uri === "state://summary") return services.stateSummary.execute();
+  if (uri === "observability://summary") return services.observability.execute();
   if (uri === "events://recent") return services.events.execute(20);
   if (uri === "queue://active") return services.queueOverview.execute();
   if (uri === "queue://dead-letter") return services.queueOverview.listDeadLetters();
+  if (uri === "requests://active") return services.requestQuery.list();
   if (uri === "learnings://recent") return services.learningQuery.list();
   if (uri === "retro://summary") return services.retro.execute();
   if (uri === "quality://summary") return services.quality.execute();
@@ -110,6 +127,7 @@ export async function readMcpResource(services: AppServices, uri: string): Promi
   if (mission.kind === "handoffs") return services.missionQuery.listHandoffs(mission.id);
   if (mission.kind === "playback") return services.missionQuery.listPlayback(mission.id);
   if (mission.kind === "learnings") return services.learningQuery.list({ missionId: mission.id });
+  if (mission.kind === "requests") return services.requestQuery.list({ missionId: mission.id });
   if (mission.kind === "retro") return services.retro.execute({ missionId: mission.id });
   return services.missionEvidence.execute(mission.id);
 }
@@ -119,6 +137,11 @@ export async function callMcpTool(services: AppServices, name: string, args: Rec
     case "submit_command": {
       const command = await services.commands.execute(args as unknown as CommandRequest);
       await enqueueQueuedCommand(services, command);
+      await enqueueAlertFanoutIfNeeded(services, {
+        commandId: command.commandId,
+        status: command.status as any,
+        latestReason: command.events.at(-1)?.reason,
+      });
       return mutation(command, commandResources());
     }
     case "issue_session":
@@ -150,24 +173,51 @@ export async function callMcpTool(services: AppServices, name: string, args: Rec
     case "approve_run": {
       const command = await services.commandLifecycle.approve(String(args.commandId));
       await enqueueQueuedCommand(services, command);
-      return mutation(command, commandResources());
+      await enqueueAlertFanoutIfNeeded(services, command);
+      await syncRelatedRequestsForCommand(services, command);
+      return mutation(command, commandResources(missionIdFromCommand(command)));
     }
-    case "reject_run":
-      return mutation(await services.commandLifecycle.reject(String(args.commandId), optionalString(args.reason)), commandResources());
+    case "reject_run": {
+      const command = await services.commandLifecycle.reject(String(args.commandId), optionalString(args.reason));
+      await enqueueAlertFanoutIfNeeded(services, command);
+      await syncRelatedRequestsForCommand(services, command);
+      return mutation(command, commandResources(missionIdFromCommand(command)));
+    }
     case "retry_run": {
       const command = await services.commandLifecycle.retry(String(args.commandId));
       await enqueueQueuedCommand(services, command);
-      return mutation(command, commandResources());
+      await enqueueAlertFanoutIfNeeded(services, command);
+      await syncRelatedRequestsForCommand(services, command);
+      return mutation(command, commandResources(missionIdFromCommand(command)));
     }
-    case "cancel_run":
-      return mutation(await services.commandLifecycle.cancel(String(args.commandId), optionalString(args.reason)), commandResources());
+    case "cancel_run": {
+      const command = await services.commandLifecycle.cancel(String(args.commandId), optionalString(args.reason));
+      await enqueueAlertFanoutIfNeeded(services, command);
+      await syncRelatedRequestsForCommand(services, command);
+      return mutation(command, commandResources(missionIdFromCommand(command)));
+    }
     case "requeue_dead_letter": {
       const command = await services.commandLifecycle.retry(String(args.commandId));
       await enqueueQueuedCommand(services, command);
-      return mutation(command, commandResources());
+      await enqueueAlertFanoutIfNeeded(services, command);
+      await syncRelatedRequestsForCommand(services, command);
+      return mutation(command, commandResources(missionIdFromCommand(command)));
     }
-    case "dismiss_dead_letter":
-      return mutation(await services.commandLifecycle.cancel(String(args.commandId), "dead_letter_dismissed"), commandResources());
+    case "dismiss_dead_letter": {
+      const command = await services.commandLifecycle.cancel(String(args.commandId), "dead_letter_dismissed");
+      await enqueueAlertFanoutIfNeeded(services, command);
+      await syncRelatedRequestsForCommand(services, command);
+      return mutation(command, commandResources(missionIdFromCommand(command)));
+    }
+    case "submit_operator_request": {
+      const request = await services.submitRequest.execute(args as unknown as SubmitOperatorRequestInput);
+      await services.queueDispatch.enqueueOperatorRequest(request.requestId, "mcp_request_submission");
+      return mutation(request, requestResources(request.missionId), true);
+    }
+    case "claim_request":
+      return mutation(await services.requestLifecycle.claim(args as unknown as ClaimOperatorRequestInput), requestResources(optionalString(args.missionId)));
+    case "update_request_status":
+      return mutation(await services.requestLifecycle.updateStatus(args as unknown as UpdateOperatorRequestStatusInput), requestResources(optionalString(args.missionId)));
     case "set_yolo_mode":
       return mutation(await services.yoloMode.set(args as any), ["state://summary", "quality://summary", "release-gate://summary"]);
     default:
@@ -175,8 +225,18 @@ export async function callMcpTool(services: AppServices, name: string, args: Rec
   }
 }
 
-function commandResources(): string[] {
-  return ["state://summary", "events://recent", "queue://active", "queue://dead-letter", "quality://summary", "release-gate://summary", "alerts://current"];
+function commandResources(missionId?: string): string[] {
+  return [
+    "state://summary",
+    "observability://summary",
+    "events://recent",
+    "queue://active",
+    "queue://dead-letter",
+    "quality://summary",
+    "release-gate://summary",
+    "alerts://current",
+    ...(missionId ? [`mission://${missionId}/evidence`, `mission://${missionId}/playback`, `mission://${missionId}/requests`] : []),
+  ];
 }
 
 function missionResources(missionId: string): string[] {
@@ -192,7 +252,16 @@ function missionUris(missionId: string): string[] {
     `mission://${missionId}/playback`,
     `mission://${missionId}/evidence`,
     `mission://${missionId}/learnings`,
+    `mission://${missionId}/requests`,
     `mission://${missionId}/retro`,
+  ];
+}
+
+function requestResources(missionId?: string): string[] {
+  return [
+    "requests://active",
+    "observability://summary",
+    ...(missionId ? [`mission://${missionId}/requests`] : []),
   ];
 }
 
@@ -213,6 +282,7 @@ function missionResourceDefinitions(missionId: string): McpResourceDefinition[] 
     resource(`mission://${missionId}/playback`, `mission-${missionId}-playback`, "Mission playback events"),
     resource(`mission://${missionId}/evidence`, `mission-${missionId}-evidence`, "Mission evidence summary"),
     resource(`mission://${missionId}/learnings`, `mission-${missionId}-learnings`, "Mission learnings"),
+    resource(`mission://${missionId}/requests`, `mission-${missionId}-requests`, "Mission operator requests"),
     resource(`mission://${missionId}/retro`, `mission-${missionId}-retro`, "Mission retrospective summary"),
   ];
 }
@@ -226,7 +296,13 @@ function tool(name: string, description: string, inputSchema: Record<string, unk
     name,
     description,
     inputSchema,
-    annotations: { readOnlyHint, destructiveHint, idempotentHint, title: name.replaceAll("_", " ") },
+    annotations: {
+      readOnlyHint,
+      destructiveHint,
+      idempotentHint,
+      openWorldHint: name === "submit_command",
+      title: name.replaceAll("_", " "),
+    },
   };
 }
 
@@ -255,8 +331,8 @@ function commandSchema(required: string[]): Record<string, unknown> {
   };
 }
 
-function matchMissionUri(uri: string): { id: string; kind: "graph" | "live" | "workers" | "handoffs" | "playback" | "evidence" | "learnings" | "retro" } | null {
-  const match = /^mission:\/\/([^/]+)\/(graph|live|workers|handoffs|playback|evidence|learnings|retro)$/.exec(uri);
+function matchMissionUri(uri: string): { id: string; kind: "graph" | "live" | "workers" | "handoffs" | "playback" | "evidence" | "learnings" | "requests" | "retro" } | null {
+  const match = /^mission:\/\/([^/]+)\/(graph|live|workers|handoffs|playback|evidence|learnings|requests|retro)$/.exec(uri);
   if (!match) {
     return null;
   }
@@ -270,6 +346,7 @@ function optionalString(value: unknown): string | undefined {
 async function enqueueQueuedCommand(services: AppServices, command: unknown): Promise<void> {
   const record = command as {
     commandId?: unknown;
+    action?: unknown;
     status?: unknown;
     latestReason?: unknown;
     events?: Array<{ reason?: unknown }>;
@@ -285,5 +362,9 @@ async function enqueueQueuedCommand(services: AppServices, command: unknown): Pr
     : typeof eventReason === "string"
       ? eventReason
       : undefined;
+  if (record.action === "browser_check" || record.action === "verify_run") {
+    await services.queueDispatch.enqueueCommandExecution(record.commandId, record.action, reason);
+    return;
+  }
   await services.queueDispatch.enqueueRetry(record.commandId, reason);
 }

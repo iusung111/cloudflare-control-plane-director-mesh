@@ -65,11 +65,16 @@ export class CommandLifecycleService {
     return this.transition(commandId, "COMMAND_CANCELLED", "cancelled", reason);
   }
 
+  async complete(commandId: string, reason = "executed_async", result?: Record<string, unknown>): Promise<CommandRecord> {
+    return this.transition(commandId, "COMMAND_COMPLETED", "completed", reason, result);
+  }
+
   private async transition(
     commandId: string,
-    type: "COMMAND_REJECTED" | "COMMAND_CANCELLED" | "COMMAND_FAILED",
-    status: "rejected" | "cancelled" | "failed",
+    type: "COMMAND_REJECTED" | "COMMAND_CANCELLED" | "COMMAND_FAILED" | "COMMAND_COMPLETED",
+    status: "rejected" | "cancelled" | "failed" | "completed",
     reason: string,
+    payload?: Record<string, unknown>,
   ): Promise<CommandRecord> {
     const command = await this.requireCommand(commandId);
     const now = this.now();
@@ -81,10 +86,11 @@ export class CommandLifecycleService {
       conflictKey: command.conflictKey,
       now,
       reason,
+      payload,
     });
 
     await this.store.appendEvent(event);
-    const updated = updateCommandRecord(command, status, now, reason);
+    const updated = updateCommandRecord(command, status, now, reason, payload);
     await this.store.putCommand(updated);
     return updated;
   }

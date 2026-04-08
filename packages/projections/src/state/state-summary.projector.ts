@@ -2,6 +2,7 @@ import type {
   CommandCount,
   LeaseRecord,
   MissionEvent,
+  OperatorRequestRecord,
   SessionRecord,
   StateSummary,
   YoloMode,
@@ -12,6 +13,7 @@ export function projectStateSummary(input: {
   sessions: SessionRecord[];
   leases: LeaseRecord[];
   events: MissionEvent[];
+  requests?: OperatorRequestRecord[];
   yoloMode: YoloMode;
 }): StateSummary {
   const generatedAt = input.now;
@@ -40,6 +42,7 @@ export function projectStateSummary(input: {
       revoked: input.leases.filter((lease) => lease.status === "revoked").length,
     },
     commands,
+    requests: countRequests(input.requests ?? []),
     yoloMode: input.yoloMode,
     recentEventAt: input.events[0]?.createdAt,
   };
@@ -67,4 +70,27 @@ function countActive(items: Array<{ status: string; expiresAt: string }>, now: s
 
 function countExpired(items: Array<{ status: string; expiresAt: string }>, now: string): number {
   return items.filter((item) => item.status === "expired" || item.expiresAt <= now).length;
+}
+
+function countRequests(requests: OperatorRequestRecord[]): NonNullable<StateSummary["requests"]> {
+  return requests.reduce<NonNullable<StateSummary["requests"]>>((counts, request) => {
+    if (request.status === "queued_for_orchestrator") {
+      counts.queuedForOrchestrator += 1;
+    }
+    if (request.status === "claimed") {
+      counts.claimed += 1;
+    }
+    if (request.status === "awaiting_approval") {
+      counts.awaitingApproval += 1;
+    }
+    if (request.status === "browser_action_pending") {
+      counts.browserActionPending += 1;
+    }
+    return counts;
+  }, {
+    queuedForOrchestrator: 0,
+    claimed: 0,
+    awaitingApproval: 0,
+    browserActionPending: 0,
+  });
 }

@@ -10,6 +10,7 @@ import type {
   MissionEvent,
   ScopedApprovalRecord,
   SessionRecord,
+  OperatorRequestRecord,
   WorkerRecord,
   YoloMode,
 } from "../../../contracts/src";
@@ -27,6 +28,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
   private readonly leases = new Map<string, LeaseRecord>();
   private readonly alertStates = new Map<string, AlertStateRecord>();
   private readonly learnings = new Map<string, LearningRecord>();
+  private readonly operatorRequests = new Map<string, OperatorRequestRecord>();
   private readonly scopedApprovals = new Map<string, ScopedApprovalRecord>();
   private readonly events: MissionEvent[] = [];
   private yoloMode: YoloMode = DEFAULT_YOLO_MODE;
@@ -138,6 +140,15 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
   }
   async listLearnings(): Promise<LearningRecord[]> {
     return Array.from(this.learnings.values()).sort(byCreatedAtDesc);
+  }
+  async getOperatorRequest(requestId: string): Promise<OperatorRequestRecord | null> {
+    return this.operatorRequests.get(requestId) ?? null;
+  }
+  async putOperatorRequest(request: OperatorRequestRecord): Promise<void> {
+    this.operatorRequests.set(request.requestId, request);
+  }
+  async listOperatorRequests(): Promise<OperatorRequestRecord[]> {
+    return Array.from(this.operatorRequests.values()).sort(byUpdatedAtDesc);
   }
   async getYoloMode(): Promise<YoloMode> {
     return this.yoloMode;

@@ -3,6 +3,8 @@ export * from "./approval";
 export * from "./command";
 export * from "./learning";
 export * from "./mission";
+export * from "./observability";
+export * from "./operator-request";
 export * from "./quality";
 export * from "./queue";
 export * from "./release";

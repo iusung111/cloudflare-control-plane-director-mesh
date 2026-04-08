@@ -12,6 +12,7 @@ export function makeCommandEvent(input: {
   conflictKey: string;
   now: Date;
   reason?: string;
+  payload?: Record<string, unknown>;
 }): MissionEvent {
   return {
     eventId: `${input.request.commandId}:${input.status}:${input.now.getTime()}`,
@@ -23,7 +24,7 @@ export function makeCommandEvent(input: {
     action: input.request.action,
     resource: input.request.resource,
     reason: input.reason,
-    payload: { ...input.request.payload, conflictKey: input.conflictKey },
+    payload: { ...input.request.payload, conflictKey: input.conflictKey, ...input.payload },
     createdAt: input.now.toISOString(),
   };
 }

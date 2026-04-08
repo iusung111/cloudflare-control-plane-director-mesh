@@ -4,8 +4,9 @@ import { MissionRoomDurableObject } from "./live/mission-room.do";
 import { McpBrokerDurableObject } from "./mcp/mcp-broker.do";
 import { processControlQueueBatch } from "./queue/process-control-queue";
 import { createServices, type WorkerEnv } from "./services";
+import { ControlStateDurableObject } from "./state/control-state.do";
 
-export { McpBrokerDurableObject, MissionRoomDurableObject };
+export { ControlStateDurableObject, McpBrokerDurableObject, MissionRoomDurableObject };
 
 export default {
   fetch(request: Request, env: WorkerEnv, executionContext: ExecutionContext) {
@@ -14,6 +15,6 @@ export default {
   },
   async queue(batch: MessageBatch, env: WorkerEnv): Promise<void> {
     const services = createServices(env);
-    await processControlQueueBatch(batch as MessageBatch<ControlQueueMessage>, services);
+    await processControlQueueBatch(batch as MessageBatch<ControlQueueMessage>, services, env);
   },
 } satisfies ExportedHandler<WorkerEnv>;

@@ -30,11 +30,13 @@ export function updateCommandRecord(
   status: CommandStatus,
   now: Date,
   reason?: string,
+  result?: Record<string, unknown>,
 ): CommandRecord {
   return {
     ...record,
     status,
     latestReason: reason,
+    result: result ?? record.result,
     attemptCount: shouldBumpAttempt(status) ? record.attemptCount + 1 : record.attemptCount,
     updatedAt: now.toISOString(),
   };

@@ -5,13 +5,13 @@ import type {
   CommandRequest,
   IssueSessionInput,
 } from "../../../../packages/contracts/src";
-import { asControlPlaneError } from "../../../../packages/shared/src/control-plane-error";
+import { asControlPlaneError, ControlPlaneError } from "../../../../packages/shared/src/control-plane-error";
 import { ensureOperatorAccess, getPrincipal, type ControlPlanePrincipal } from "../auth/control-plane-auth";
 import { readJson } from "../api/http";
 import {
   callMcpTool,
-  listMcpResources,
   MCP_RESOURCE_TEMPLATES,
+  listMcpResources,
   MCP_TOOLS,
   readMcpResource,
 } from "../mcp/catalog";
@@ -21,7 +21,6 @@ import {
   fetchBrokerEventStream,
   getBrokerSession,
   markBrokerSessionInitialized,
-  notifyBrokerMutations,
   subscribeBrokerResource,
   unsubscribeBrokerResource,
 } from "../mcp/broker-client";
@@ -38,7 +37,6 @@ import {
 import {
   createSession,
   drainSessionEvents,
-  enqueueMutationNotifications,
   followSessionEvents,
   getSession,
   markSessionInitialized,
@@ -46,9 +44,18 @@ import {
   terminateSession,
   unsubscribeFromResource,
 } from "../mcp/session-store";
+import { publishMutationNotifications } from "../notifications/mutation-publisher";
 import type { AppServices, WorkerEnv } from "../services";
 
 const DEFAULT_SSE_HEARTBEAT_MS = 15000;
+const CHATGPT_APP_TOOL_NAMES = new Set(["submit_operator_request"]);
+const CHATGPT_APP_RESOURCE_URIS = new Set([
+  "missions://active",
+  "requests://active",
+  "quality://summary",
+  "observability://summary",
+]);
+const CHATGPT_APP_TEMPLATE_PREFIXES = ["mission://{id}/requests"];
 
 interface McpSessionSummary {
   id: string;
@@ -119,6 +126,60 @@ export function createMcpRouter(
     });
   });
 
+  app.get("/app", async (context) => {
+    if (wantsEventStream(context.req.header("accept"))) {
+      const sessionId = readSessionId(context.req);
+      if (!sessionId) {
+        return context.json({ error: "mcp_session_id_required" }, 400);
+      }
+      const session = await getMcpSession(env, sessionId);
+      if (!session) {
+        return context.json({ error: "mcp_session_not_found" }, 404);
+      }
+      if (env?.MCP_BROKER) {
+        const response = await fetchBrokerEventStream(env, sessionId, {
+          lastEventId: readLastEventId(context.req),
+          follow: wantsFollowStream(context.req.query("follow")),
+          heartbeatMs: heartbeatMs(context.req.query("heartbeatMs")),
+        });
+        if (!response) {
+          return context.json({ error: "mcp_session_not_found" }, 404);
+        }
+        return response;
+      }
+      return new Response(streamSessionEvents(session.id, {
+        lastEventId: readLastEventId(context.req),
+        follow: wantsFollowStream(context.req.query("follow")),
+        heartbeatMs: heartbeatMs(context.req.query("heartbeatMs")),
+        abortSignal: context.req.raw.signal,
+      }), { status: 200, headers: sseHeaders() });
+    }
+
+    return context.json({
+      protocol: "chatgpt-app-gateway",
+      transport: "streamable-http-json-rpc",
+      tools: chatGptAppTools().map((tool) => tool.name),
+      resources: chatGptAppResources(await listMcpResources(services)).map((resource) => resource.uri),
+    });
+  });
+
+  app.post("/app", async (context) => {
+    const payload = await context.req.json().catch(() => undefined);
+    if (payload === undefined) {
+      return context.json(errorResponse(null, -32700, "Parse error"), 400);
+    }
+    const sessionId = readSessionId(context.req);
+    const response = Array.isArray(payload)
+      ? await handleAppBatch(payload, sessionId, services, env)
+      : await handleAppMessage(payload, sessionId, services, env);
+    if (response.status === 200 && response.sessionId) {
+      context.header("Mcp-Session-Id", response.sessionId);
+    }
+    return response.body === null
+      ? new Response(null, { status: response.status })
+      : context.json(response.body, response.status as 200 | 202 | 400 | 403 | 404);
+  });
+
   app.delete("/", async (context) => {
     const sessionId = readSessionId(context.req);
     if (!sessionId) {
@@ -153,9 +214,11 @@ export function createMcpRouter(
   });
 
   app.get("/resources/state-summary", async (context) => context.json(await services.stateSummary.execute()));
+  app.get("/resources/observability-summary", async (context) => context.json(await services.observability.execute()));
   app.get("/resources/events-recent", async (context) => context.json(await services.events.execute(20)));
   app.get("/resources/queue-active", async (context) => context.json(await services.queueOverview.execute()));
   app.get("/resources/queue-dead-letter", async (context) => context.json(await services.queueOverview.listDeadLetters()));
+  app.get("/resources/requests-active", async (context) => context.json(await services.requestQuery.list()));
   app.get("/resources/learnings-recent", async (context) => context.json(await services.learningQuery.list()));
   app.get("/resources/retro-summary", async (context) => context.json(await services.retro.execute()));
   app.get("/resources/quality-summary", async (context) => context.json(await services.quality.execute()));
@@ -171,6 +234,7 @@ export function createMcpRouter(
   app.get("/resources/mission-handoffs/:id", async (context) => context.json(await services.missionQuery.listHandoffs(context.req.param("id"))));
   app.get("/resources/mission-playback/:id", async (context) => context.json(await services.missionQuery.listPlayback(context.req.param("id"))));
   app.get("/resources/mission-learnings/:id", async (context) => context.json(await services.learningQuery.list({ missionId: context.req.param("id") })));
+  app.get("/resources/mission-requests/:id", async (context) => context.json(await services.requestQuery.list({ missionId: context.req.param("id") })));
   app.get("/resources/mission-retro/:id", async (context) => context.json(await services.retro.execute({ missionId: context.req.param("id") })));
 
   app.post("/tools/submit-command", async (context) =>
@@ -259,6 +323,31 @@ export function createMcpRouter(
       "dismiss_alert",
       await readJson<{ alertId: string }>(context),
     ));
+  app.post("/tools/submit-operator-request", async (context) =>
+    toolResponse(
+      context,
+      env,
+      services,
+      "submit_operator_request",
+      await readJson<Record<string, unknown>>(context) as any,
+      201,
+    ));
+  app.post("/tools/claim-request", async (context) =>
+    toolResponse(
+      context,
+      env,
+      services,
+      "claim_request",
+      await readJson<Record<string, unknown>>(context) as any,
+    ));
+  app.post("/tools/update-request-status", async (context) =>
+    toolResponse(
+      context,
+      env,
+      services,
+      "update_request_status",
+      await readJson<Record<string, unknown>>(context) as any,
+    ));
   app.post("/tools/approve-run", async (context) =>
     toolResponse(
       context,
@@ -340,6 +429,29 @@ async function handleBatch(
     createdSessionId ??= handled.sessionId;
   }
 
+  return responses.length === 0
+    ? { status: 202, body: null, sessionId: createdSessionId }
+    : { status: 200, body: responses, sessionId: createdSessionId };
+}
+
+async function handleAppBatch(
+  messages: unknown[],
+  sessionId: string | null,
+  services: AppServices,
+  env: WorkerEnv | undefined,
+): Promise<McpResponseBody> {
+  const responses: JsonRpcResponse[] = [];
+  let createdSessionId: string | undefined;
+  for (const message of messages) {
+    const handled = await handleAppMessage(message, sessionId, services, env);
+    if (handled.sessionId) {
+      createdSessionId = handled.sessionId;
+      sessionId = handled.sessionId;
+    }
+    if (handled.body && !Array.isArray(handled.body)) {
+      responses.push(handled.body);
+    }
+  }
   return responses.length === 0
     ? { status: 202, body: null, sessionId: createdSessionId }
     : { status: 200, body: responses, sessionId: createdSessionId };
@@ -454,6 +566,80 @@ async function handleMessage(
   }
 }
 
+async function handleAppMessage(
+  message: unknown,
+  sessionId: string | null,
+  services: AppServices,
+  env: WorkerEnv | undefined,
+): Promise<McpResponseBody> {
+  if (isJsonRpcResponse(message)) {
+    return { status: 202, body: null };
+  }
+  if (!isJsonRpcRequest(message)) {
+    return { status: 400, body: errorResponse(null, -32600, "Invalid Request") };
+  }
+  if (message.method === "initialize") {
+    const session = await createMcpSession(env);
+    return {
+      status: 200,
+      sessionId: session.id,
+      body: okResponse(message.id ?? null, {
+        protocolVersion: MCP_PROTOCOL_VERSION,
+        capabilities: { resources: { subscribe: true, listChanged: true }, tools: {} },
+        serverInfo: { name: "cloudflare-control-plane-director-mesh-chatgpt-app", version: "0.1.0" },
+      }),
+    };
+  }
+  if (!sessionId) {
+    return { status: 400, body: errorResponse(message.id ?? null, -32000, "Mcp-Session-Id header is required") };
+  }
+  const session = await getMcpSession(env, sessionId);
+  if (!session) {
+    return { status: 404, body: errorResponse(message.id ?? null, -32001, "Session not found") };
+  }
+  if (message.method === "notifications/initialized") {
+    await initializeMcpSession(env, sessionId);
+    return { status: 202, body: null };
+  }
+  if (!session.initialized && message.method !== "ping") {
+    return { status: 400, body: errorResponse(message.id ?? null, -32002, "Session is not initialized") };
+  }
+  if (isJsonRpcNotification(message)) {
+    return { status: 202, body: null };
+  }
+  const request = message as JsonRpcRequest;
+  try {
+    switch (request.method) {
+      case "ping":
+        return { status: 200, body: okResponse(request.id ?? null, {}) };
+      case "tools/list":
+        return { status: 200, body: okResponse(request.id ?? null, { tools: chatGptAppTools() }) };
+      case "tools/call":
+        return { status: 200, body: await handleAppToolCall(request, services, env) };
+      case "resources/list":
+        return { status: 200, body: okResponse(request.id ?? null, { resources: chatGptAppResources(await listMcpResources(services)) }) };
+      case "resources/templates/list":
+        return { status: 200, body: okResponse(request.id ?? null, { resourceTemplates: MCP_RESOURCE_TEMPLATES.filter((template) => CHATGPT_APP_TEMPLATE_PREFIXES.includes(template.uriTemplate)) }) };
+      case "resources/read":
+        return { status: 200, body: await handleAppResourceRead(request, services) };
+      case "resources/subscribe":
+        await subscribeMcpSession(env, sessionId, requireAppUri(requireUri(request.params)));
+        return { status: 200, body: okResponse(request.id ?? null, {}) };
+      case "resources/unsubscribe":
+        await unsubscribeMcpSession(env, sessionId, requireAppUri(requireUri(request.params)));
+        return { status: 200, body: okResponse(request.id ?? null, {}) };
+      default:
+        return { status: 400, body: errorResponse(request.id ?? null, -32601, "Method not found", { method: request.method }) };
+    }
+  } catch (error) {
+    const controlPlaneError = asControlPlaneError(error);
+    return {
+      status: controlPlaneError.status,
+      body: errorResponse(request.id ?? null, -32603, controlPlaneError.code, controlPlaneError.details),
+    };
+  }
+}
+
 async function handleToolCall(
   message: JsonRpcRequest,
   services: AppServices,
@@ -485,6 +671,41 @@ async function handleToolCall(
       isError: true,
     });
   }
+}
+
+async function handleAppToolCall(
+  message: JsonRpcRequest,
+  services: AppServices,
+  env: WorkerEnv | undefined,
+): Promise<JsonRpcResponse> {
+  const params = asRecord(message.params);
+  const name = typeof params.name === "string" ? params.name : "";
+  if (!CHATGPT_APP_TOOL_NAMES.has(name)) {
+    throw new ControlPlaneError(403, "chatgpt_app_tool_not_allowed", { name });
+  }
+  const args = asRecord(params.arguments);
+  const result = await callMcpTool(services, name, args);
+  await publishMutationNotifications(env, result);
+  return okResponse(message.id ?? null, {
+    content: [{ type: "text", text: JSON.stringify(result.data) }],
+    structuredContent: result.data,
+    isError: false,
+  });
+}
+
+async function handleAppResourceRead(
+  message: JsonRpcRequest,
+  services: AppServices,
+): Promise<JsonRpcResponse> {
+  const uri = requireAppUri(requireUri(message.params));
+  const result = await readMcpResource(services, uri);
+  return okResponse(message.id ?? null, {
+    contents: [{
+      uri,
+      mimeType: "application/json",
+      text: JSON.stringify(result, null, 2),
+    }],
+  });
 }
 
 async function handleResourceRead(
@@ -577,18 +798,6 @@ async function terminateMcpSession(env: WorkerEnv | undefined, sessionId: string
   return terminateSession(sessionId);
 }
 
-async function publishMutationNotifications(
-  env: WorkerEnv | undefined,
-  input: { updatedResources: string[]; listChanged?: boolean },
-): Promise<void> {
-  if (env?.MCP_BROKER) {
-    await notifyBrokerMutations(env, input);
-    return;
-  }
-
-  enqueueMutationNotifications(input);
-}
-
 function toLocalSessionSummary(session: ReturnType<typeof getSession> extends infer T ? Exclude<T, null> : never): McpSessionSummary {
   return {
     id: session.id,
@@ -605,6 +814,13 @@ function requireUri(params: unknown): string {
     throw new Error("uri_required");
   }
   return record.uri;
+}
+
+function requireAppUri(uri: string): string {
+  if (CHATGPT_APP_RESOURCE_URIS.has(uri) || /^mission:\/\/[^/]+\/requests$/.test(uri)) {
+    return uri;
+  }
+  throw new ControlPlaneError(403, "chatgpt_app_resource_not_allowed", { uri });
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -630,6 +846,18 @@ function wantsFollowStream(value: string | undefined): boolean {
 function heartbeatMs(value: string | undefined): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 1000 ? parsed : DEFAULT_SSE_HEARTBEAT_MS;
+}
+
+function chatGptAppTools() {
+  return MCP_TOOLS.filter((tool) => CHATGPT_APP_TOOL_NAMES.has(tool.name));
+}
+
+function chatGptAppResources(resources: Awaited<ReturnType<typeof listMcpResources>>) {
+  return resources.filter((resource) => requireAppResourceSafe(resource.uri));
+}
+
+function requireAppResourceSafe(uri: string): boolean {
+  return CHATGPT_APP_RESOURCE_URIS.has(uri) || /^mission:\/\/[^/]+\/requests$/.test(uri);
 }
 
 function sseHeaders(): HeadersInit {

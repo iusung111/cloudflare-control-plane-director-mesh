@@ -72,12 +72,18 @@ tests/
 - `GET /api/queue/dlq`
 - `POST /api/queue/dlq/:id/requeue`
 - `POST /api/queue/dlq/:id/dismiss`
+- `GET /api/observability`
 - `GET /api/quality`
 - `GET /api/release-gate`
 - `GET,POST /api/learnings`
 - `GET /api/learnings/:id`
 - `GET /api/retro`
 - `GET /api/runs`
+- `GET,POST /api/requests`
+- `GET /api/requests/:id`
+- `POST /api/requests/:id/claim`
+- `POST /api/requests/:id/heartbeat`
+- `POST /api/requests/:id/status`
 - `GET /api/state/summary`
 - `GET,POST /api/approvals/yolo`
 - `GET /api/approvals/scoped`
@@ -110,6 +116,8 @@ JSON-RPC / Streamable HTTP style:
 - `POST /mcp`
 - `GET /mcp` with `Accept: text/event-stream`
 - `DELETE /mcp`
+- `GET /mcp/app`
+- `POST /mcp/app`
 
 Supported JSON-RPC methods:
 
@@ -130,6 +138,8 @@ Key MCP resources and tools include:
 - `release-gate://summary`
 - `queue://active`
 - `queue://dead-letter`
+- `requests://active`
+- `observability://summary`
 - `alerts://current`
 - `alerts://log`
 - `learnings://recent`
@@ -138,8 +148,12 @@ Key MCP resources and tools include:
 - `mission://{id}/live`
 - `mission://{id}/playback`
 - `mission://{id}/learnings`
+- `mission://{id}/requests`
 - `mission://{id}/retro`
 - `submit_command`
+- `submit_operator_request`
+- `claim_request`
+- `update_request_status`
 - `create_mission`
 - `upsert_worker`
 - `record_handoff`
@@ -152,6 +166,8 @@ Key MCP resources and tools include:
 SSE supports backlog drain, `Last-Event-ID` replay/resume, and long-lived `follow=1` fan-out streams.
 
 When `MCP_BROKER` is bound, MCP sessions, subscriptions, and SSE replay state are persisted through the broker Durable Object instead of an in-memory map.
+
+`/mcp/app` is the ChatGPT Developer Mode remote MCP surface. It intentionally exposes only the safe subset needed to enqueue operator requests from ChatGPT into the main orchestrator lane.
 
 ## Auth
 
@@ -167,13 +183,14 @@ When any control-plane auth variable is configured, `/app`, `/api`, and `/mcp` r
 `/app` serves an interactive client-side console shell that:
 
 - Boots from the server snapshot and refreshes live data
-- Shows mission selection, live graph, playback, alerts, release checks, learnings, and retro
+- Shows mission selection, live graph, completed mode, sessions, handoffs, evidence, alerts, release checks, learnings, retro, and operator requests
 - Connects to mission live WebSocket updates
 - Allows in-console alert read/dismiss actions
 - Allows in-console learning capture
 - Allows command approve, retry, reject, and cancel actions
 - Allows scoped approval creation and deletion
 - Shows DLQ/dead-letter commands with requeue and dismiss actions
+- Supports worker filters and saved views
 - Allows in-console YOLO mode toggling and logout
 
 ## Runtime Bindings
@@ -229,6 +246,7 @@ Cloudflare bindings:
 
 - `MISSION_ROOM` Durable Object binding
 - `MCP_BROKER` Durable Object binding
+- `CONTROL_STATE` Durable Object binding
 - `CONTROL_QUEUE` Queue binding
 
 Control-plane auth settings:
@@ -245,11 +263,33 @@ Control-plane auth settings:
 ```bash
 npm run typecheck
 npm test
+npm run test:ui
+npm run test:load
+npm run test:chaos
 npm run build
+```
+
+Browser E2E:
+
+```bash
+TEST_BASE_URL=https://cloudflare-control-plane-director-mesh.iusung111.workers.dev \
+TEST_OPERATOR_TOKEN=... \
+TEST_APP_PASSWORD=... \
+npm run test:e2e
 ```
 
 ## Current Status
 
-The current scope includes auth-gated `/app` + `/api` + `/mcp`, MCP JSON-RPC transport with broker-backed session durability, follow-capable SSE, mission live room wiring, queue retry plus dead-letter operations, alert lifecycle, learning capture, retro summary, release gate, quality aggregation, and an operator console with command/approval/DLQ actions. Remaining work is external QA and deployment hardening rather than missing core platform surfaces.
+The worker now covers the requirement-doc gaps that were still open earlier in the project:
+
+- operator request lane and orchestrator queue handoff
+- ChatGPT app-style remote MCP entrypoint
+- Korean approval-button handling in the operator console
+- sessions, handoffs, evidence drawer, completed mode, saved views, and worker filters in `/app`
+- approval-scope and alert-unread coordination through `CONTROL_STATE`
+- observability summaries, structured request tracing, and queue-side mutation fan-out
+- load pack, chaos-lite, UI shell, and browser E2E validation scripts
+
+The remaining work is operational hardening, not missing platform surface. See `docs/derived/orchestrator_chatgpt_console_flow.md`.
 
 Repository hygiene is also normalized for the new structure: generated artifacts are ignored via `.gitignore`, `node_modules` is no longer intended to be versioned, and the old `src/` plus `runtime/` prototype tree has been removed.

@@ -65,12 +65,20 @@ describe("runtime bindings", () => {
     expect(response.status).toBe(200);
     const command = await response.json() as { status: string };
     expect(command.status).toBe("queued");
-    expect(queue.sent).toEqual([{
-      kind: "retry-command",
-      commandId: "cmd-queued",
-      enqueuedAt: expect.any(String),
-      reason: "resource_conflict_with_active_lease",
-    }]);
+    expect(queue.sent).toEqual([
+      {
+        kind: "retry-command",
+        commandId: "cmd-queued",
+        enqueuedAt: expect.any(String),
+        reason: "resource_conflict_with_active_lease",
+      },
+      {
+        kind: "alert-fanout",
+        alertId: "alert:cmd-queued",
+        enqueuedAt: expect.any(String),
+        reason: "resource_conflict_with_active_lease",
+      },
+    ]);
   });
 
   it("syncs mission snapshots and deltas through the durable object binding", async () => {
@@ -204,6 +212,62 @@ describe("runtime bindings", () => {
     expect(broker.calls.map((call) => `${call.method} ${call.pathname}`)).toContain("POST /initialize");
     expect(broker.calls.map((call) => `${call.method} ${call.pathname}`)).toContain("POST /notify");
     expect(broker.calls.map((call) => `${call.method} ${call.pathname}`)).toContain(`GET /session/${sessionId}/events`);
+  });
+
+  it("syncs approval and alert cache overlays through the control-state durable object binding", async () => {
+    const store = new MemoryControlPlaneStore();
+    const controlState = new FakeControlStateNamespace();
+    const env = { CONTROL_STATE: controlState as unknown as DurableObjectNamespace };
+    const app = createBoundApp(store, env);
+
+    await postJson(app, "/api/approvals/scoped", {
+      approvalId: "approval-cache",
+      actorId: "operator-cache",
+      action: "deploy_live",
+      resource: { repo: "iusung111/repo", branch: "main", path: "ops/cache.txt" },
+    }, 201);
+
+    await store.putCommand({
+      commandId: "cmd-alert-cache",
+      dedupKey: "dedup-alert-cache",
+      sessionId: "session-cache",
+      leaseId: "lease-cache",
+      action: "github_write",
+      resource: { repo: "iusung111/repo", branch: "main", path: "ops/cache.txt" },
+      conflictKey: "iusung111/repo:main:ops/cache.txt",
+      payload: { missionId: "mission-cache" },
+      status: "failed",
+      latestReason: "failed_for_cache_test",
+      attemptCount: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    const approvals = await app.request("/api/approvals/scoped");
+    expect(approvals.status).toBe(200);
+    expect(await approvals.json()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ approvalId: "approval-cache" }),
+    ]));
+
+    const readAlert = await app.request("/api/alerts/alert:cmd-alert-cache/read", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(readAlert.status).toBe(200);
+
+    const alerts = await app.request("/api/alerts");
+    expect(alerts.status).toBe(200);
+    expect(await alerts.json()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ alertId: "alert:cmd-alert-cache", unread: false }),
+    ]));
+
+    expect(controlState.calls.map((call) => `${call.method} ${call.pathname}`)).toEqual(expect.arrayContaining([
+      "PUT /approvals/approval-cache",
+      "GET /approvals",
+      "PUT /alert-states/alert%3Acmd-alert-cache",
+      "GET /alert-states",
+    ]));
   });
 
   it("retries queued queue messages and acks terminal errors", async () => {
@@ -482,5 +546,57 @@ class FakeQueueMessage implements Message<ControlQueueMessage> {
 
   retry(options?: QueueRetryOptions): void {
     this.retried = options;
+  }
+}
+
+class FakeControlStateNamespace {
+  calls: Array<{ method: string; pathname: string; body: string }> = [];
+  private readonly approvals = new Map<string, unknown>();
+  private readonly alertStates = new Map<string, unknown>();
+
+  idFromName(): DurableObjectId {
+    return {} as DurableObjectId;
+  }
+
+  get(): DurableObjectStub {
+    return {
+      id: {} as DurableObjectId,
+      fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        const url = new URL(request.url);
+        const pathname = url.pathname;
+        const body = await request.clone().text();
+        this.calls.push({ method: request.method, pathname, body });
+
+        const approvalMatch = /^\/approvals\/([^/]+)$/.exec(pathname);
+        if (request.method === "GET" && pathname === "/approvals") {
+          return Response.json(Array.from(this.approvals.values()));
+        }
+        if (request.method === "PUT" && approvalMatch) {
+          const approval = JSON.parse(body);
+          this.approvals.set(decodeURIComponent(approvalMatch[1]), approval);
+          return Response.json(approval, { status: 201 });
+        }
+        if (request.method === "DELETE" && approvalMatch) {
+          this.approvals.delete(decodeURIComponent(approvalMatch[1]));
+          return new Response(null, { status: 204 });
+        }
+
+        const alertMatch = /^\/alert-states\/([^/]+)$/.exec(pathname);
+        if (request.method === "GET" && pathname === "/alert-states") {
+          return Response.json(Array.from(this.alertStates.values()));
+        }
+        if (request.method === "PUT" && alertMatch) {
+          const state = JSON.parse(body);
+          this.alertStates.set(decodeURIComponent(alertMatch[1]), state);
+          return Response.json(state, { status: 201 });
+        }
+
+        return new Response("control_state", { status: 200 });
+      },
+      connect: () => {
+        throw new Error("socket_connect_not_supported_in_test");
+      },
+    } as DurableObjectStub;
   }
 }

@@ -99,6 +99,34 @@ export interface MissionEvidenceSnapshot {
     status: string;
     createdAt: string;
   }>;
+  browserEvidence: Array<{
+    commandId: string;
+    status: string;
+    summary: string;
+    checkedAt: string;
+    url?: string;
+    selector?: string;
+  }>;
+  reviewFindings: Array<{
+    id: string;
+    title: string;
+    summary: string;
+    createdAt: string;
+    source: "handoff" | "learning" | "command";
+  }>;
+  releaseChecks: Array<{
+    code: string;
+    status: string;
+    summary: string;
+    metric: number | boolean;
+  }>;
+  learnings: Array<{
+    learningId: string;
+    title: string;
+    kind: string;
+    summary: string;
+    createdAt: string;
+  }>;
 }
 
 export type MissionDelta =

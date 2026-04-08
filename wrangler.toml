@@ -10,6 +10,10 @@ class_name = "MissionRoomDurableObject"
 name = "MCP_BROKER"
 class_name = "McpBrokerDurableObject"
 
+[[durable_objects.bindings]]
+name = "CONTROL_STATE"
+class_name = "ControlStateDurableObject"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["MissionRoomDurableObject"]
@@ -17,6 +21,10 @@ new_sqlite_classes = ["MissionRoomDurableObject"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["McpBrokerDurableObject"]
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["ControlStateDurableObject"]
 
 [[queues.producers]]
 binding = "CONTROL_QUEUE"

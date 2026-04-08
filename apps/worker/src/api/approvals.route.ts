@@ -1,12 +1,14 @@
 import { Hono } from "hono";
 import type { AppServices } from "../services";
+import type { WorkerEnv } from "../services";
+import { deleteCachedApproval, listCachedApprovals, putCachedApproval } from "../state/control-state.client";
 import { readJson, requireString } from "./http";
 
-export function createApprovalsRoute(services: AppServices): Hono {
-  const app = new Hono();
+export function createApprovalsRoute(services: AppServices, env?: WorkerEnv): Hono<{ Bindings: WorkerEnv }> {
+  const app = new Hono<{ Bindings: WorkerEnv }>();
 
   app.get("/yolo", async (context) => context.json(await services.yoloMode.get()));
-  app.get("/scoped", async (context) => context.json(await services.scopedApprovals.list()));
+  app.get("/scoped", async (context) => context.json(await listCachedApprovals(env) ?? await services.scopedApprovals.list()));
 
   app.post("/yolo", async (context) => {
     const body = await readJson<Record<string, unknown>>(context);
@@ -34,11 +36,13 @@ export function createApprovalsRoute(services: AppServices): Hono {
       },
     });
 
+    await putCachedApproval(env, approval);
     return context.json(approval, 201);
   });
 
   app.delete("/scoped/:id", async (context) => {
     await services.scopedApprovals.delete(context.req.param("id"));
+    await deleteCachedApproval(env, context.req.param("id"));
     return context.body(null, 204);
   });
 

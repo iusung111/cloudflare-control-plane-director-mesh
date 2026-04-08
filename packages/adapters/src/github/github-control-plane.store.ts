@@ -8,6 +8,7 @@ import type {
   MissionDelta,
   MissionRecord,
   MissionEvent,
+  OperatorRequestRecord,
   ScopedApprovalRecord,
   SessionRecord,
   WorkerRecord,
@@ -24,6 +25,7 @@ import {
   dedupPath, edgeDir, edgePath, eventPath, handoffDir, handoffPath, leasePath,
   missionDeltaDir, missionDeltaPath, missionPath, sessionPath, workerDir, workerPath,
   learningPath,
+  operatorRequestPath,
   scopedApprovalPath,
   yoloPath,
 } from "./github-paths";
@@ -147,6 +149,16 @@ export class GitHubControlPlaneStore implements ControlPlaneStore {
   async listLearnings(): Promise<LearningRecord[]> {
     const entries = await this.client.list(".control-plane/learnings");
     return readMany<LearningRecord>(entries.map((entry) => entry.path), this.client);
+  }
+  getOperatorRequest(requestId: string): Promise<OperatorRequestRecord | null> {
+    return this.client.readJson(operatorRequestPath(requestId));
+  }
+  putOperatorRequest(request: OperatorRequestRecord): Promise<void> {
+    return this.client.writeJson(operatorRequestPath(request.requestId), request);
+  }
+  async listOperatorRequests(): Promise<OperatorRequestRecord[]> {
+    const entries = await this.client.list(".control-plane/requests");
+    return readMany<OperatorRequestRecord>(entries.map((entry) => entry.path), this.client);
   }
   async getYoloMode(): Promise<YoloMode> {
     return (await this.client.readJson<YoloMode>(yoloPath())) ?? DEFAULT_YOLO_MODE;

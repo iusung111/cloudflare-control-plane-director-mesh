@@ -10,6 +10,7 @@ import type {
   MissionEvent,
   ScopedApprovalRecord,
   SessionRecord,
+  OperatorRequestRecord,
   WorkerRecord,
   YoloMode,
 } from "../../../contracts/src";
@@ -48,6 +49,9 @@ export interface ControlPlaneStore {
   putLearning(learning: LearningRecord): Promise<void>;
   getLearning(learningId: string): Promise<LearningRecord | null>;
   listLearnings(): Promise<LearningRecord[]>;
+  getOperatorRequest(requestId: string): Promise<OperatorRequestRecord | null>;
+  putOperatorRequest(request: OperatorRequestRecord): Promise<void>;
+  listOperatorRequests(): Promise<OperatorRequestRecord[]>;
   getYoloMode(): Promise<YoloMode>;
   setYoloMode(mode: YoloMode): Promise<void>;
 }

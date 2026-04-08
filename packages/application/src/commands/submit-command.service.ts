@@ -75,6 +75,14 @@ export class SubmitCommandService {
       return response;
     }
 
+    if (request.action === "browser_check" || request.action === "verify_run") {
+      const response = await this.singleEventResponse(baseRecord, request, "COMMAND_QUEUED", "queued", currentTime, "queued_for_async_execution");
+      if (options?.persistDedup !== false) {
+        await this.store.saveDedup(request.dedupKey, request.commandId);
+      }
+      return response;
+    }
+
     const emitted = makeCommandEvent({
       request,
       type: "COMMAND_EMITTED",
@@ -116,6 +124,7 @@ export class SubmitCommandService {
     status: CommandStatus,
     now: Date,
     reason?: string,
+    payload?: Record<string, unknown>,
   ): Promise<CommandResponse> {
     const event = makeCommandEvent({
       request,
@@ -124,10 +133,11 @@ export class SubmitCommandService {
       conflictKey: baseRecord.conflictKey,
       now,
       reason,
+      payload,
     });
 
     await this.store.appendEvent(event);
-    await this.store.putCommand(updateCommandRecord(baseRecord, status, now, reason));
+    await this.store.putCommand(updateCommandRecord(baseRecord, status, now, reason, payload));
 
     return {
       commandId: request.commandId,

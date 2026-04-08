@@ -112,7 +112,7 @@ export function ensureOperatorAccess(principal: ControlPlanePrincipal | null | u
 }
 
 export function isPublicAuthPath(pathname: string): boolean {
-  return pathname === "/healthz" || pathname === "/login";
+  return pathname === "/healthz" || pathname === "/login" || pathname === "/mcp/app";
 }
 
 export function authRedirectTarget(request: Request): string {

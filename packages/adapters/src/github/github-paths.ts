@@ -62,6 +62,10 @@ export function learningPath(learningId: string): string {
   return `.control-plane/learnings/${safeId(learningId)}.json`;
 }
 
+export function operatorRequestPath(requestId: string): string {
+  return `.control-plane/requests/${safeId(requestId)}.json`;
+}
+
 export function scopedApprovalPath(approvalId: string): string {
   return `.control-plane/approvals/${safeId(approvalId)}.json`;
 }

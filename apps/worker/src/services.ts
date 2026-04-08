@@ -1,3 +1,4 @@
+import { BrowserQaAdapter } from "../../../packages/adapters/src/browser/browser-qa.adapter";
 import { GitHubControlPlaneStore } from "../../../packages/adapters/src/github/github-control-plane.store";
 import type { GitHubStoreConfig } from "../../../packages/adapters/src/github/github-contents.client";
 import type { ControlPlaneStore } from "../../../packages/adapters/src/store/control-plane-store";
@@ -16,7 +17,11 @@ import { CaptureLearningService } from "../../../packages/application/src/learni
 import { LearningQueryService } from "../../../packages/application/src/learning/learning-query.service";
 import { RetroQueryService } from "../../../packages/application/src/learning/retro-query.service";
 import { GetQualitySummaryService } from "../../../packages/application/src/quality/get-quality-summary.service";
+import { GetObservabilitySummaryService } from "../../../packages/application/src/observability/get-observability-summary.service";
 import { GetReleaseGateService } from "../../../packages/application/src/release/get-release-gate.service";
+import { OperatorRequestLifecycleService } from "../../../packages/application/src/requests/operator-request-lifecycle.service";
+import { OperatorRequestQueryService } from "../../../packages/application/src/requests/operator-request-query.service";
+import { SubmitOperatorRequestService } from "../../../packages/application/src/requests/submit-operator-request.service";
 import { YoloModeService } from "../../../packages/application/src/approvals/yolo-mode.service";
 import { EventDetailService } from "../../../packages/application/src/events/event-detail.service";
 import { ListEventsService } from "../../../packages/application/src/events/list-events.service";
@@ -39,6 +44,7 @@ export interface WorkerEnv {
   CONTROL_PLANE_APP_PASSWORD?: string;
   CONTROL_PLANE_COOKIE_SECRET?: string;
   CONTROL_QUEUE?: Queue<import("../../../packages/contracts/src").ControlQueueMessage>;
+  CONTROL_STATE?: DurableObjectNamespace;
   MISSION_ROOM?: DurableObjectNamespace;
   MCP_BROKER?: DurableObjectNamespace;
 }
@@ -66,7 +72,12 @@ export interface AppServices {
   scopedApprovals: ScopedApprovalService;
   queueOverview: QueueOverviewService;
   stateSummary: GetStateSummaryService;
+  submitRequest: SubmitOperatorRequestService;
+  requestLifecycle: OperatorRequestLifecycleService;
+  requestQuery: OperatorRequestQueryService;
+  observability: GetObservabilitySummaryService;
   yoloMode: YoloModeService;
+  browserQa: BrowserQaAdapter;
 }
 
 let fallbackMemoryStore: ControlPlaneStore | undefined;
@@ -79,6 +90,7 @@ export function createServices(
   const commands = new SubmitCommandService(store);
   const releaseGate = new GetReleaseGateService(store);
   const learningQuery = new LearningQueryService(store);
+  const requestLifecycle = new OperatorRequestLifecycleService(store);
   return {
     store,
     commands,
@@ -88,21 +100,26 @@ export function createServices(
     missions: new MissionLifecycleService(store),
     missionActivity: new MissionActivityService(store),
     missionQuery: new MissionQueryService(store),
-    missionEvidence: new MissionEvidenceService(store),
+    missionEvidence: new MissionEvidenceService(store, releaseGate),
     captureLearning: new CaptureLearningService(store),
     learningQuery,
+    submitRequest: new SubmitOperatorRequestService(store),
+    requestLifecycle,
+    requestQuery: new OperatorRequestQueryService(store),
     sessions: new SessionLifecycleService(store),
     leases: new LeaseLifecycleService(store),
     events: new ListEventsService(store),
     eventDetail: new EventDetailService(store),
     alerts: new ListAlertsService(store),
     quality: new GetQualitySummaryService(store, releaseGate),
+    observability: new GetObservabilitySummaryService(store, releaseGate),
     releaseGate,
     retro: new RetroQueryService(store),
     scopedApprovals: new ScopedApprovalService(store),
     queueOverview: new QueueOverviewService(store),
     stateSummary: new GetStateSummaryService(store),
     yoloMode: new YoloModeService(store),
+    browserQa: new BrowserQaAdapter(),
   };
 }
 

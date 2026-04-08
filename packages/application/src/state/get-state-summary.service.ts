@@ -9,10 +9,11 @@ export class GetStateSummaryService {
   ) {}
 
   async execute(): Promise<StateSummary> {
-    const [sessions, leases, events, yoloMode] = await Promise.all([
+    const [sessions, leases, events, requests, yoloMode] = await Promise.all([
       this.store.listSessions(),
       this.store.listLeases(),
       this.store.listEvents(200),
+      this.store.listOperatorRequests(),
       this.store.getYoloMode(),
     ]);
 
@@ -21,6 +22,7 @@ export class GetStateSummaryService {
       sessions,
       leases,
       events,
+      requests,
       yoloMode,
     });
   }

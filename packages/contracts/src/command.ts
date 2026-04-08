@@ -71,6 +71,7 @@ export interface CommandRecord {
   payload: Record<string, unknown> & { explicitLive?: boolean };
   status: CommandStatus;
   latestReason?: string;
+  result?: Record<string, unknown>;
   attemptCount: number;
   createdAt: string;
   updatedAt: string;

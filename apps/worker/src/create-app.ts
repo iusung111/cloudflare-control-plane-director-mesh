@@ -6,6 +6,7 @@ import { createAppRouter } from "./router/app-router";
 import { createApiRouter } from "./router/api-router";
 import { createHealthRouter } from "./router/health-router";
 import { createMcpRouter } from "./router/mcp-router";
+import { createRequestTracingMiddleware } from "./observability/request-tracing";
 import { createServices, type AppServices, type WorkerEnv } from "./services";
 
 export function createApp(options?: {
@@ -17,6 +18,7 @@ export function createApp(options?: {
   const auth = resolveAuthConfig(options?.env);
 
   app.use("*", createAuthMiddleware(auth));
+  app.use("*", createRequestTracingMiddleware());
   app.route("/", createAppRouter(services, auth));
   app.route("/", createHealthRouter());
   app.route("/api", createApiRouter(services, options?.env));
