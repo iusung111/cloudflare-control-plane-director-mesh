@@ -11,7 +11,7 @@
   "targetUrl": "https://cloudflare-control-plane-director-mesh.iusung111.workers.dev/app",
   "selector": "[data-command-action='approve'][data-id='e2e-1775673619254-deploy-live']",
   "expectedText": "승인",
-  "status": "received",
+  "status": "queued_for_orchestrator",
   "createdAt": "2026-04-08T18:40:33.643Z",
-  "updatedAt": "2026-04-08T18:40:33.643Z"
+  "updatedAt": "2026-04-08T18:40:39.646Z"
 }
