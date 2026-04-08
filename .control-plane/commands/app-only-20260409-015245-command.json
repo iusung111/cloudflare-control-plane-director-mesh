@@ -13,8 +13,9 @@
   "payload": {
     "note": "github app only smoke"
   },
-  "status": "emitted",
-  "attemptCount": 0,
+  "status": "completed",
+  "attemptCount": 1,
   "createdAt": "2026-04-08T16:52:50.755Z",
-  "updatedAt": "2026-04-08T16:52:50.755Z"
+  "updatedAt": "2026-04-08T16:52:50.755Z",
+  "latestReason": "executed_inline"
 }
