@@ -1,5 +1,25 @@
 import type { ConsoleSnapshot } from "../../../../packages/contracts/src";
 
+export function createEmptyConsoleSnapshot(now = new Date().toISOString()): ConsoleSnapshot {
+  return {
+    summary: {
+      generatedAt: now,
+      sessions: { active: 0, expired: 0, revoked: 0 },
+      leases: { active: 0, expired: 0, revoked: 0, released: 0 },
+      commands: { queued: 0, emitted: 0, completed: 0, rejected: 0, failed: 0, cancelled: 0 },
+      yoloMode: {
+        enabled: false,
+        updatedAt: "1970-01-01T00:00:00.000Z",
+        updatedBy: "system",
+      },
+    },
+    recentEvents: [],
+    sessions: [],
+    leases: [],
+    missions: [],
+  };
+}
+
 export function renderConsoleShell(snapshot: ConsoleSnapshot): string {
   const bootstrap = JSON.stringify(snapshot).replace(/</g, "\\u003c");
 

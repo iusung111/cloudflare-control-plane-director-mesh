@@ -141,6 +141,26 @@ describe("control plane auth", () => {
     const body = await toolCall.json() as { error: { message: string } };
     expect(body.error.message).toBe("forbidden");
   });
+
+  it("renders the console shell without eagerly reading service state", async () => {
+    const services = new Proxy({}, {
+      get() {
+        throw new Error("console_bootstrap_should_not_read_services");
+      },
+    });
+
+    const app = createApp({
+      env: {} as WorkerEnv,
+      services: services as any,
+    });
+
+    const html = await app.request("/app", {
+      headers: { accept: "text/html" },
+    });
+
+    expect(html.status).toBe(200);
+    expect(await html.text()).toContain("Control Plane Director Mesh");
+  });
 });
 
 function buildApp(env: Partial<WorkerEnv>) {

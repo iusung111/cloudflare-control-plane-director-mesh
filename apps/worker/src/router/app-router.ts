@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { deleteOperatorSession, issueOperatorSession, loginPasswordMatches, type ControlPlaneAuthConfig } from "../auth/control-plane-auth";
 import type { AppServices } from "../services";
-import { renderConsoleShell } from "../ui-shell/console-shell";
+import { createEmptyConsoleSnapshot, renderConsoleShell } from "../ui-shell/console-shell";
 
 export function createAppRouter(services: AppServices, auth: ControlPlaneAuthConfig): Hono {
   const app = new Hono();
@@ -41,37 +41,7 @@ export function createAppRouter(services: AppServices, auth: ControlPlaneAuthCon
   });
 
   app.get("/app", async (context) => {
-    const [summary, quality, releaseGate, retro, alerts, learnings, recentEvents, sessions, leases, missions, commands, scopedApprovals, deadLetters] = await Promise.all([
-      services.stateSummary.execute(),
-      services.quality.execute(),
-      services.releaseGate.execute(),
-      services.retro.execute(),
-      services.alerts.listCurrent(),
-      services.learningQuery.list(),
-      services.events.execute(20),
-      services.sessions.list(),
-      services.leases.list(),
-      services.missions.list(),
-      services.commandQuery.list(),
-      services.scopedApprovals.list(),
-      services.queueOverview.listDeadLetters(),
-    ]);
-
-    return context.html(renderConsoleShell({
-      alerts,
-      commands: commands.slice(0, 12),
-      deadLetters: deadLetters.slice(0, 8),
-      learnings: learnings.slice(0, 5),
-      scopedApprovals: scopedApprovals.slice(0, 8),
-      retro,
-      summary,
-      quality,
-      releaseGate,
-      recentEvents,
-      sessions,
-      leases,
-      missions,
-    }));
+    return context.html(renderConsoleShell(createEmptyConsoleSnapshot()));
   });
 
   return app;
