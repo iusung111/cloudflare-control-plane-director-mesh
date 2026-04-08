@@ -1,0 +1,19 @@
+{
+  "eventId": "prod-smoke-20260409-012342-command:emitted:1775665427103",
+  "commandId": "prod-smoke-20260409-012342-command",
+  "sessionId": "prod-smoke-20260409-012342-session",
+  "leaseId": "prod-smoke-20260409-012342-lease",
+  "type": "COMMAND_EMITTED",
+  "status": "emitted",
+  "action": "deploy_live",
+  "resource": {
+    "branch": "master",
+    "path": ".control-plane/prod-smoke/prod-smoke-20260409-012342.json",
+    "repo": "iusung111/cloudflare-control-plane-director-mesh"
+  },
+  "payload": {
+    "note": "production smoke command",
+    "conflictKey": "iusung111/cloudflare-control-plane-director-mesh:master:.control-plane/prod-smoke/prod-smoke-20260409-012342.json"
+  },
+  "createdAt": "2026-04-08T16:23:47.103Z"
+}
