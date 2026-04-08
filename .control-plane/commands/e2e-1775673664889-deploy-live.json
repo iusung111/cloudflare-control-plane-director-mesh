@@ -15,8 +15,9 @@
     "explicitLive": true,
     "note": "e2e-console-approval"
   },
-  "status": "emitted",
-  "attemptCount": 1,
+  "status": "completed",
+  "attemptCount": 2,
   "createdAt": "2026-04-08T18:41:13.419Z",
-  "updatedAt": "2026-04-08T18:41:34.739Z"
+  "updatedAt": "2026-04-08T18:41:34.739Z",
+  "latestReason": "executed_inline"
 }
