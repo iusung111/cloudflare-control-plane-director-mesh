@@ -6,7 +6,8 @@
     "branch": "master",
     "path": "ops/e2e/e2e-1775673664889.txt"
   },
-  "status": "active",
+  "status": "released",
   "createdAt": "2026-04-08T18:41:08.215Z",
-  "expiresAt": "2026-04-08T19:11:08.215Z"
+  "expiresAt": "2026-04-08T19:11:08.215Z",
+  "releasedAt": "2026-04-08T18:41:43.172Z"
 }
