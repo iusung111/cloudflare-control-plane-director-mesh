@@ -2,7 +2,8 @@
   "sessionId": "prod-rotate-20260409-020231-session",
   "actorId": "prod-rotate-operator",
   "role": "delivery",
-  "status": "active",
+  "status": "revoked",
   "createdAt": "2026-04-08T17:02:35.789Z",
-  "expiresAt": "2026-04-08T19:02:35.789Z"
+  "expiresAt": "2026-04-08T19:02:35.789Z",
+  "revokedAt": "2026-04-08T17:02:42.942Z"
 }
