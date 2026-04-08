@@ -36,7 +36,7 @@ export class GitHubAuthProvider {
     private readonly config: GitHubAuthConfig,
     options?: GitHubAuthProviderOptions,
   ) {
-    this.fetchImpl = options?.fetch ?? fetch;
+    this.fetchImpl = options?.fetch ?? ((input, init) => fetch(input, init));
     this.now = options?.now ?? (() => new Date());
   }
 
