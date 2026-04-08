@@ -4,8 +4,8 @@
   "repoKey": "iusung111/cloudflare-control-plane-director-mesh",
   "env": "prod",
   "phase": "qa",
-  "status": "active",
+  "status": "completed",
   "ownerActor": "app-cutover",
   "createdAt": "2026-04-08T16:51:37.457Z",
-  "updatedAt": "2026-04-08T16:51:37.457Z"
+  "updatedAt": "2026-04-08T16:51:45.404Z"
 }
