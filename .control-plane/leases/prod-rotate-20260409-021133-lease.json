@@ -6,7 +6,8 @@
     "branch": "master",
     "path": "ops/smoke/prod-rotate-20260409-021133.txt"
   },
-  "status": "active",
+  "status": "released",
   "createdAt": "2026-04-08T17:11:38.861Z",
-  "expiresAt": "2026-04-08T17:41:38.861Z"
+  "expiresAt": "2026-04-08T17:41:38.861Z",
+  "releasedAt": "2026-04-08T17:11:46.838Z"
 }
