@@ -111,6 +111,101 @@ describe("runtime bindings", () => {
     expect(missionRoom.calls[1].body).toContain("\"type\":\"worker.updated\"");
   });
 
+  it("routes mcp sessions and notifications through the broker durable object binding", async () => {
+    const store = new MemoryControlPlaneStore();
+    const broker = new FakeMcpBrokerNamespace();
+    const env = { MCP_BROKER: broker as unknown as DurableObjectNamespace };
+    const app = createBoundApp(store, env);
+
+    const initialize = await app.request("/mcp", {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-03-26",
+          capabilities: {},
+          clientInfo: { name: "vitest", version: "1.0.0" },
+        },
+      }),
+    });
+    expect(initialize.status).toBe(200);
+    const sessionId = initialize.headers.get("Mcp-Session-Id");
+    expect(sessionId).toBeTruthy();
+
+    const initialized = await app.request("/mcp", {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json",
+        "mcp-session-id": sessionId ?? "",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "notifications/initialized",
+      }),
+    });
+    expect(initialized.status).toBe(202);
+
+    const subscribed = await app.request("/mcp", {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json",
+        "mcp-session-id": sessionId ?? "",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "resources/subscribe",
+        params: { uri: "missions://active" },
+      }),
+    });
+    expect(subscribed.status).toBe(200);
+
+    const createMission = await app.request("/mcp", {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json",
+        "mcp-session-id": sessionId ?? "",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 3,
+        method: "tools/call",
+        params: {
+          name: "create_mission",
+          arguments: {
+            missionId: "mission-broker",
+            title: "Broker mission",
+            repoKey: "iusung111/cloudflare-control-plane-director-mesh",
+            ownerActor: "operator-broker",
+          },
+        },
+      }),
+    });
+    expect(createMission.status).toBe(200);
+
+    const stream = await app.request("/mcp", {
+      method: "GET",
+      headers: {
+        accept: "text/event-stream",
+        "mcp-session-id": sessionId ?? "",
+      },
+    });
+    expect(stream.status).toBe(200);
+    expect(await stream.text()).toContain("missions://active");
+    expect(broker.calls.map((call) => `${call.method} ${call.pathname}`)).toContain("POST /initialize");
+    expect(broker.calls.map((call) => `${call.method} ${call.pathname}`)).toContain("POST /notify");
+    expect(broker.calls.map((call) => `${call.method} ${call.pathname}`)).toContain(`GET /session/${sessionId}/events`);
+  });
+
   it("retries queued queue messages and acks terminal errors", async () => {
     const queuedMessage = new FakeQueueMessage({
       kind: "retry-command",
@@ -195,6 +290,181 @@ class FakeMissionRoomNamespace {
       },
     } as DurableObjectStub;
   }
+}
+
+class FakeMcpBrokerNamespace {
+  calls: Array<{ method: string; pathname: string; body: string }> = [];
+  private readonly sessions = new Map<string, FakeBrokerSession>();
+
+  idFromName(): DurableObjectId {
+    return {} as DurableObjectId;
+  }
+
+  get(): DurableObjectStub {
+    return {
+      id: {} as DurableObjectId,
+      fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        const pathname = new URL(request.url).pathname;
+        this.calls.push({
+          method: request.method,
+          pathname,
+          body: await request.clone().text(),
+        });
+        return this.handle(request);
+      },
+      connect: () => {
+        throw new Error("socket_connect_not_supported_in_test");
+      },
+    } as DurableObjectStub;
+  }
+
+  private async handle(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const path = url.pathname;
+
+    if (request.method === "POST" && path === "/initialize") {
+      const session = this.createSession();
+      return Response.json({ session: this.summary(session) });
+    }
+
+    if (request.method === "POST" && path === "/notify") {
+      const body = await request.json().catch(() => ({})) as {
+        updatedResources?: string[];
+        listChanged?: boolean;
+      };
+      for (const session of this.sessions.values()) {
+        if (!session.initialized) {
+          continue;
+        }
+
+        if (body.listChanged) {
+          this.enqueue(session, { jsonrpc: "2.0", method: "notifications/resources/list_changed" });
+        }
+
+        for (const uri of body.updatedResources ?? []) {
+          if (session.subscriptions.has(uri)) {
+            this.enqueue(session, {
+              jsonrpc: "2.0",
+              method: "notifications/resources/updated",
+              params: { uri },
+            });
+          }
+        }
+      }
+
+      return Response.json({ ok: true });
+    }
+
+    const match = /^\/session\/([^/]+)(?:\/(initialized|subscribe|unsubscribe|events))?$/.exec(path);
+    if (!match) {
+      return new Response("broker", { status: 200 });
+    }
+
+    const sessionId = decodeURIComponent(match[1]);
+    const action = match[2];
+    const session = this.sessions.get(sessionId);
+
+    if (!action && request.method === "GET") {
+      return session
+        ? Response.json({ session: this.summary(session) })
+        : Response.json({ error: "session_not_found" }, { status: 404 });
+    }
+
+    if (!action && request.method === "DELETE") {
+      if (!session) {
+        return Response.json({ error: "session_not_found" }, { status: 404 });
+      }
+      this.sessions.delete(sessionId);
+      return new Response(null, { status: 204 });
+    }
+
+    if (!session) {
+      return Response.json({ error: "session_not_found" }, { status: 404 });
+    }
+
+    if (action === "initialized" && request.method === "POST") {
+      session.initialized = true;
+      session.updatedAt = new Date().toISOString();
+      return Response.json({ session: this.summary(session) });
+    }
+
+    if ((action === "subscribe" || action === "unsubscribe") && request.method === "POST") {
+      const body = await request.json().catch(() => ({})) as { uri?: string };
+      if (!body.uri) {
+        return Response.json({ error: "uri_required" }, { status: 400 });
+      }
+      if (action === "subscribe") {
+        session.subscriptions.add(body.uri);
+      } else {
+        session.subscriptions.delete(body.uri);
+      }
+      session.updatedAt = new Date().toISOString();
+      return Response.json({ session: this.summary(session) });
+    }
+
+    if (action === "events" && request.method === "GET") {
+      const lastEventId = request.headers.get("last-event-id") ?? url.searchParams.get("lastEventId");
+      const pending = session.events.filter((event) => event.id > (lastEventId ?? session.deliveredEventId ?? ""));
+      if (pending.length > 0) {
+        session.deliveredEventId = pending[pending.length - 1].id;
+        session.updatedAt = new Date().toISOString();
+      }
+      const body = pending.map((event) => `id: ${event.id}\ndata: ${JSON.stringify(event.message)}\n\n`).join("");
+      return new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }
+
+    return Response.json({ error: "method_not_allowed" }, { status: 405 });
+  }
+
+  private createSession(): FakeBrokerSession {
+    const now = new Date().toISOString();
+    const session: FakeBrokerSession = {
+      id: crypto.randomUUID(),
+      initialized: false,
+      subscriptions: new Set<string>(),
+      events: [],
+      nextSequence: 1,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.sessions.set(session.id, session);
+    return session;
+  }
+
+  private enqueue(session: FakeBrokerSession, message: unknown): void {
+    session.events.push({
+      id: String(session.nextSequence++).padStart(12, "0"),
+      message,
+    });
+    session.updatedAt = new Date().toISOString();
+  }
+
+  private summary(session: FakeBrokerSession) {
+    return {
+      id: session.id,
+      initialized: session.initialized,
+      subscriptions: Array.from(session.subscriptions),
+      deliveredEventId: session.deliveredEventId,
+      nextSequence: session.nextSequence,
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
+    };
+  }
+}
+
+interface FakeBrokerSession {
+  id: string;
+  initialized: boolean;
+  subscriptions: Set<string>;
+  events: Array<{ id: string; message: unknown }>;
+  deliveredEventId?: string;
+  nextSequence: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 class FakeQueueMessage implements Message<ControlQueueMessage> {

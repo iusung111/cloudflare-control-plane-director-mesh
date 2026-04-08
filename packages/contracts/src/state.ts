@@ -4,6 +4,8 @@ import type { MissionRecord } from "./mission";
 import type { QualitySummary } from "./quality";
 import type { ReleaseGateSummary } from "./release";
 import type { AlertRecord } from "./alert";
+import type { ScopedApprovalRecord } from "./approval";
+import type { CommandRecord } from "./command";
 import type { LeaseRecord, SessionRecord, YoloMode } from "./session";
 
 export interface StatusCount {
@@ -33,8 +35,11 @@ export interface StateSummary {
 
 export interface ConsoleSnapshot {
   alerts?: AlertRecord[];
+  commands?: CommandRecord[];
+  deadLetters?: CommandRecord[];
   learnings?: LearningRecord[];
   retro?: RetroSummary;
+  scopedApprovals?: ScopedApprovalRecord[];
   summary: StateSummary;
   quality?: QualitySummary;
   releaseGate?: ReleaseGateSummary;

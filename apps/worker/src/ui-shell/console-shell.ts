@@ -69,7 +69,7 @@ export function renderConsoleShell(snapshot: ConsoleSnapshot): string {
         .toolbar {
           display: grid;
           gap: 10px;
-          grid-template-columns: minmax(220px, 320px) repeat(3, max-content) 1fr;
+          grid-template-columns: minmax(220px, 320px) repeat(5, max-content) 1fr;
           align-items: center;
         }
         .toolbar select, .toolbar button, .toolbar input, .toolbar textarea {
@@ -241,9 +241,12 @@ export function renderConsoleShell(snapshot: ConsoleSnapshot): string {
             releaseGate: bootstrap.releaseGate,
             retro: bootstrap.retro,
             alerts: bootstrap.alerts || [],
+            commands: bootstrap.commands || [],
+            deadLetters: bootstrap.deadLetters || [],
             learnings: bootstrap.learnings || [],
             recentEvents: bootstrap.recentEvents || [],
             missions: bootstrap.missions || [],
+            scopedApprovals: bootstrap.scopedApprovals || [],
           },
           selectedMissionId: bootstrap.missions?.[0]?.missionId || null,
           connectedMissionId: null,
@@ -282,6 +285,53 @@ export function renderConsoleShell(snapshot: ConsoleSnapshot): string {
             return;
           }
 
+          if (target.matches("[data-action='yolo-toggle']")) {
+            await postJson('/api/approvals/yolo', {
+              enabled: !state.dashboard.summary?.yoloMode?.enabled,
+              updatedBy: 'console-operator',
+              note: 'console_toggle',
+            });
+            await refreshAll();
+            return;
+          }
+
+          if (target.matches("[data-command-action]")) {
+            const action = target.dataset.commandAction;
+            const commandId = target.dataset.id;
+            if (!action || !commandId) return;
+            await postJson('/api/commands/' + commandId + '/' + action, action === 'reject'
+              ? { reason: 'rejected_in_console' }
+              : action === 'cancel'
+                ? { reason: 'cancelled_in_console' }
+                : {});
+            await refreshAll();
+            return;
+          }
+
+          if (target.matches("[data-dlq-action='requeue']")) {
+            await postJson('/api/queue/dlq/' + target.dataset.id + '/requeue', {});
+            await refreshAll();
+            return;
+          }
+
+          if (target.matches("[data-dlq-action='dismiss']")) {
+            await postJson('/api/queue/dlq/' + target.dataset.id + '/dismiss', {});
+            await refreshAll();
+            return;
+          }
+
+          if (target.matches('[data-approval-delete]')) {
+            await deleteRequest('/api/approvals/scoped/' + target.dataset.approvalDelete);
+            await refreshAll();
+            return;
+          }
+
+          if (target.matches("[data-action='logout']")) {
+            await fetch('/logout', { method: 'POST' });
+            window.location.assign('/login');
+            return;
+          }
+
           if (target.matches('[data-open]')) {
             window.open(target.dataset.open, '_blank', 'noopener');
           }
@@ -299,27 +349,51 @@ export function renderConsoleShell(snapshot: ConsoleSnapshot): string {
 
         document.addEventListener('submit', async (event) => {
           const form = event.target;
-          if (!(form instanceof HTMLFormElement) || form.id !== 'learning-form') return;
+          if (!(form instanceof HTMLFormElement)) return;
           event.preventDefault();
 
-          const data = new FormData(form);
-          const mission = state.dashboard.missions.find((item) => item.missionId === state.selectedMissionId);
-          await postJson('/api/learnings', {
-            learningId: 'learning-' + Date.now(),
-            scope: mission ? 'mission' : 'system',
-            kind: String(data.get('kind') || 'note'),
-            title: String(data.get('title') || ''),
-            summary: String(data.get('summary') || ''),
-            createdBy: 'console-operator',
-            missionId: mission?.missionId,
-            repoKey: mission?.repoKey,
-            tags: String(data.get('tags') || '')
-              .split(',')
-              .map((tag) => tag.trim())
-              .filter(Boolean),
-          });
+          if (form.id === 'learning-form') {
+            const data = new FormData(form);
+            const mission = state.dashboard.missions.find((item) => item.missionId === state.selectedMissionId);
+            await postJson('/api/learnings', {
+              learningId: 'learning-' + Date.now(),
+              scope: mission ? 'mission' : 'system',
+              kind: String(data.get('kind') || 'note'),
+              title: String(data.get('title') || ''),
+              summary: String(data.get('summary') || ''),
+              createdBy: 'console-operator',
+              missionId: mission?.missionId,
+              repoKey: mission?.repoKey,
+              tags: String(data.get('tags') || '')
+                .split(',')
+                .map((tag) => tag.trim())
+                .filter(Boolean),
+            });
+          }
+
+          if (form.id === 'approval-form') {
+            const data = new FormData(form);
+            await postJson('/api/approvals/scoped', {
+              approvalId: String(data.get('approvalId') || ('approval-' + Date.now())),
+              actorId: String(data.get('actorId') || 'console-operator'),
+              action: String(data.get('action') || 'deploy_live'),
+              reason: String(data.get('reason') || '') || undefined,
+              ttlMinutes: Number(data.get('ttlMinutes') || 60),
+              resource: {
+                repo: String(data.get('repo') || ''),
+                branch: String(data.get('branch') || '') || undefined,
+                path: String(data.get('path') || '') || undefined,
+              },
+            });
+          }
 
           form.reset();
+          if (form.id === 'approval-form') {
+            const actorInput = form.querySelector("[name='actorId']");
+            const ttlInput = form.querySelector("[name='ttlMinutes']");
+            if (actorInput instanceof HTMLInputElement) actorInput.value = 'console-operator';
+            if (ttlInput instanceof HTMLInputElement) ttlInput.value = '60';
+          }
           await refreshAll();
         });
 
@@ -331,18 +405,33 @@ export function renderConsoleShell(snapshot: ConsoleSnapshot): string {
         }
 
         async function refreshDashboard() {
-          const [summary, quality, releaseGate, retro, alerts, learnings, recentEvents, missions] = await Promise.all([
+          const [summary, quality, releaseGate, retro, alerts, commands, deadLetters, learnings, recentEvents, missions, scopedApprovals] = await Promise.all([
             fetchJson('/api/state/summary'),
             fetchJson('/api/quality'),
             fetchJson('/api/release-gate'),
             fetchJson('/api/retro'),
             fetchJson('/api/alerts'),
+            fetchJson('/api/commands'),
+            fetchJson('/api/queue/dlq'),
             fetchJson('/api/learnings'),
             fetchJson('/api/events'),
             fetchJson('/api/missions'),
+            fetchJson('/api/approvals/scoped'),
           ]);
 
-          state.dashboard = { summary, quality, releaseGate, retro, alerts, learnings, recentEvents, missions };
+          state.dashboard = {
+            summary,
+            quality,
+            releaseGate,
+            retro,
+            alerts,
+            commands,
+            deadLetters,
+            learnings,
+            recentEvents,
+            missions,
+            scopedApprovals,
+          };
 
           if (state.selectedMissionId && !missions.some((item) => item.missionId === state.selectedMissionId)) {
             state.selectedMissionId = missions[0]?.missionId || null;
@@ -449,6 +538,7 @@ export function renderConsoleShell(snapshot: ConsoleSnapshot): string {
                 <span>YOLO: <strong>\${dashboard.summary?.yoloMode?.enabled ? 'enabled' : 'disabled'}</strong></span>
                 <span>Quality: <strong>\${dashboard.quality?.status || 'unknown'}</strong></span>
                 <span>Release gate: <strong>\${dashboard.releaseGate?.status || 'unknown'}</strong></span>
+                <span>Dead letters: <strong>\${(dashboard.deadLetters || []).length}</strong></span>
                 <span>Live socket: <strong>\${state.liveSocketState}</strong></span>
                 <span>Last live delta: <strong>\${state.lastDeltaType || 'none'}</strong></span>
               </div>
@@ -460,6 +550,8 @@ export function renderConsoleShell(snapshot: ConsoleSnapshot): string {
                 <button type="button" data-action="refresh">Refresh</button>
                 <button type="button" class="ghost" data-open="/api/missions">Open API</button>
                 <button type="button" class="ghost" data-open="/mcp">Open MCP</button>
+                <button type="button" data-action="yolo-toggle">\${dashboard.summary?.yoloMode?.enabled ? 'Disable YOLO' : 'Enable YOLO'}</button>
+                <button type="button" class="ghost" data-action="logout">Logout</button>
               </div>
             </section>
             <section class="panel">
@@ -467,8 +559,10 @@ export function renderConsoleShell(snapshot: ConsoleSnapshot): string {
                 \${metric('Active Sessions', dashboard.summary?.sessions?.active ?? 0)}
                 \${metric('Active Leases', dashboard.summary?.leases?.active ?? 0)}
                 \${metric('Queued Commands', dashboard.summary?.commands?.queued ?? 0)}
+                \${metric('Dead Letters', (dashboard.deadLetters || []).length)}
                 \${metric('Unread Alerts', (dashboard.alerts || []).filter((item) => item.unread).length)}
                 \${metric('Learnings', dashboard.retro?.learningsCount ?? 0)}
+                \${metric('Scoped Approvals', (dashboard.scopedApprovals || []).length)}
                 \${metric('Missions', (dashboard.missions || []).length)}
               </div>
             </section>
@@ -477,6 +571,10 @@ export function renderConsoleShell(snapshot: ConsoleSnapshot): string {
                 <article class="panel">
                   <h2>Active Missions</h2>
                   <div class="list">\${renderMissionList(dashboard.missions || [])}</div>
+                </article>
+                <article class="panel">
+                  <h2>Command Lifecycle</h2>
+                  <div class="list">\${renderCommands(dashboard.commands || [])}</div>
                 </article>
                 <article class="panel">
                   <h2>Alerts</h2>
@@ -497,11 +595,19 @@ export function renderConsoleShell(snapshot: ConsoleSnapshot): string {
                   <h2>Playback</h2>
                   <div class="timeline">\${renderPlayback(playback)}</div>
                 </article>
+                <article class="panel">
+                  <h2>Dead Letters</h2>
+                  <div class="list">\${renderDeadLetters(dashboard.deadLetters || [])}</div>
+                </article>
               </div>
               <div class="stack">
                 <article class="panel">
                   <h2>Release Checks</h2>
                   <div class="signals">\${renderSignals(dashboard.releaseGate?.checks || [], dashboard.quality?.signals || [])}</div>
+                </article>
+                <article class="panel">
+                  <h2>Scoped Approvals</h2>
+                  <div class="list">\${renderScopedApprovals(dashboard.scopedApprovals || [])}</div>
                 </article>
                 <article class="panel">
                   <h2>Learn / Retro</h2>
@@ -523,6 +629,31 @@ export function renderConsoleShell(snapshot: ConsoleSnapshot): string {
                     <input type="text" name="title" placeholder="Learning title" required />
                     <textarea name="summary" rows="4" placeholder="What should the team remember next time?" required></textarea>
                     <button type="submit" class="action">Capture Learning</button>
+                  </form>
+                </article>
+                <article class="panel">
+                  <h2>Create Scoped Approval</h2>
+                  <form id="approval-form" class="learning-form">
+                    <div class="row">
+                      <input type="text" name="approvalId" placeholder="approval id (optional)" />
+                      <input type="text" name="actorId" placeholder="actor id" value="console-operator" required />
+                    </div>
+                    <div class="row">
+                      <select name="action">
+                        <option value="deploy_live">deploy_live</option>
+                        <option value="deploy_mirror">deploy_mirror</option>
+                        <option value="github_write">github_write</option>
+                        <option value="github_pr_create">github_pr_create</option>
+                      </select>
+                      <input type="number" name="ttlMinutes" min="1" value="60" />
+                    </div>
+                    <input type="text" name="repo" placeholder="repo" required />
+                    <div class="row">
+                      <input type="text" name="branch" placeholder="branch" />
+                      <input type="text" name="path" placeholder="path" />
+                    </div>
+                    <textarea name="reason" rows="3" placeholder="Why is this approval safe?"></textarea>
+                    <button type="submit" class="action">Create Approval</button>
                   </form>
                 </article>
               </div>
@@ -555,6 +686,62 @@ export function renderConsoleShell(snapshot: ConsoleSnapshot): string {
               <div class="actions">
                 <button class="read" data-action="alert-read" data-id="\${escapeHtml(alert.alertId)}">Mark Read</button>
                 <button class="dismiss" data-action="alert-dismiss" data-id="\${escapeHtml(alert.alertId)}">Dismiss</button>
+              </div>
+            </div>
+          \`).join('');
+        }
+
+        function renderCommands(commands) {
+          if (!commands.length) return '<div class="empty">No commands recorded.</div>';
+          return commands.slice(0, 10).map((command) => \`
+            <div class="item">
+              <header>
+                <strong>\${escapeHtml(command.commandId)}</strong>
+                <span class="badge \${badgeTone(command.status)}">\${escapeHtml(command.status)}</span>
+              </header>
+              <div class="muted">\${escapeHtml(command.action)} / \${escapeHtml(command.resource?.repo || '-')}</div>
+              <div class="muted">\${escapeHtml(command.latestReason || 'no latest reason')}</div>
+              <div class="actions">
+                \${renderCommandAction(command, 'approve', 'Approve')}
+                \${renderCommandAction(command, 'retry', 'Retry')}
+                \${renderCommandAction(command, 'reject', 'Reject')}
+                \${renderCommandAction(command, 'cancel', 'Cancel')}
+              </div>
+            </div>
+          \`).join('');
+        }
+
+        function renderDeadLetters(commands) {
+          if (!commands.length) return '<div class="empty">No dead-lettered commands.</div>';
+          return commands.map((command) => \`
+            <div class="item">
+              <header>
+                <strong>\${escapeHtml(command.commandId)}</strong>
+                <span class="badge danger">failed</span>
+              </header>
+              <div class="muted">\${escapeHtml(command.action)} / \${escapeHtml(command.resource?.repo || '-')}</div>
+              <div>\${escapeHtml(command.latestReason || 'retry_exhausted')}</div>
+              <div class="actions">
+                <button class="read" data-dlq-action="requeue" data-id="\${escapeHtml(command.commandId)}">Requeue</button>
+                <button class="dismiss" data-dlq-action="dismiss" data-id="\${escapeHtml(command.commandId)}">Dismiss</button>
+              </div>
+            </div>
+          \`).join('');
+        }
+
+        function renderScopedApprovals(approvals) {
+          if (!approvals.length) return '<div class="empty">No scoped approvals.</div>';
+          return approvals.map((approval) => \`
+            <div class="item">
+              <header>
+                <strong>\${escapeHtml(approval.approvalId)}</strong>
+                <span class="badge">\${escapeHtml(approval.action)}</span>
+              </header>
+              <div class="muted">\${escapeHtml(approval.resource?.repo || '-')} / \${escapeHtml(approval.resource?.branch || '*')} / \${escapeHtml(approval.resource?.path || '*')}</div>
+              <div>\${escapeHtml(approval.reason || 'no reason provided')}</div>
+              <div class="muted">expires \${escapeHtml(approval.expiresAt)}</div>
+              <div class="actions">
+                <button class="dismiss" data-approval-delete="\${escapeHtml(approval.approvalId)}">Delete</button>
               </div>
             </div>
           \`).join('');
@@ -674,6 +861,19 @@ export function renderConsoleShell(snapshot: ConsoleSnapshot): string {
           return \`<article class="metric"><div class="label">\${escapeHtml(label)}</div><div class="value">\${escapeHtml(String(value))}</div></article>\`;
         }
 
+        function renderCommandAction(command, action, label) {
+          if (action === 'approve' && command.action !== 'deploy_live') {
+            return '';
+          }
+          if (['completed', 'cancelled'].includes(command.status) && ['approve', 'retry'].includes(action)) {
+            return '';
+          }
+          if (command.status === 'cancelled' && ['reject', 'cancel'].includes(action)) {
+            return '';
+          }
+          return \`<button class="\${action === 'cancel' || action === 'reject' ? 'dismiss' : 'read'}" data-command-action="\${action}" data-id="\${escapeHtml(command.commandId)}">\${label}</button>\`;
+        }
+
         function badgeTone(status) {
           if (['failed', 'blocked', 'danger', 'high', 'fail'].includes(status)) return 'danger';
           if (['queued', 'warn', 'waiting_approval', 'medium'].includes(status)) return 'warn';
@@ -705,7 +905,17 @@ export function renderConsoleShell(snapshot: ConsoleSnapshot): string {
           if (!response.ok) {
             throw new Error(url + ' -> ' + response.status);
           }
+          if (response.status === 204) {
+            return null;
+          }
           return response.json();
+        }
+
+        async function deleteRequest(url) {
+          const response = await fetch(url, { method: 'DELETE' });
+          if (!response.ok) {
+            throw new Error(url + ' -> ' + response.status);
+          }
         }
 
         function escapeHtml(value) {

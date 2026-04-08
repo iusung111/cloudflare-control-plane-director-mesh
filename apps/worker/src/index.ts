@@ -1,10 +1,11 @@
 import type { ControlQueueMessage } from "../../../packages/contracts/src";
 import { createApp } from "./create-app";
 import { MissionRoomDurableObject } from "./live/mission-room.do";
+import { McpBrokerDurableObject } from "./mcp/mcp-broker.do";
 import { processControlQueueBatch } from "./queue/process-control-queue";
 import { createServices, type WorkerEnv } from "./services";
 
-export { MissionRoomDurableObject };
+export { McpBrokerDurableObject, MissionRoomDurableObject };
 
 export default {
   fetch(request: Request, env: WorkerEnv, executionContext: ExecutionContext) {

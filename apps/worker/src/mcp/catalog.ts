@@ -44,6 +44,8 @@ export const MCP_TOOLS: McpToolDefinition[] = [
   tool("reject_run", "Reject a run", objectSchema(["commandId"]), false, true, false),
   tool("retry_run", "Retry a run", objectSchema(["commandId"]), false, true, false),
   tool("cancel_run", "Cancel a run", objectSchema(["commandId"]), false, true, false),
+  tool("requeue_dead_letter", "Requeue a dead-lettered command", objectSchema(["commandId"]), false, true, false),
+  tool("dismiss_dead_letter", "Dismiss a dead-lettered command", objectSchema(["commandId"]), false, true, false),
   tool("set_yolo_mode", "Set YOLO mode", objectSchema(["enabled", "updatedBy"]), false, true, true),
 ];
 
@@ -51,6 +53,7 @@ const STATIC_RESOURCES: McpResourceDefinition[] = [
   resource("state://summary", "state-summary", "Control-plane state summary"),
   resource("events://recent", "events-recent", "Recent mission events"),
   resource("queue://active", "queue-active", "Queued commands"),
+  resource("queue://dead-letter", "queue-dead-letter", "Dead-lettered commands"),
   resource("learnings://recent", "learnings-recent", "Recent learnings"),
   resource("retro://summary", "retro-summary", "Retrospective summary"),
   resource("quality://summary", "quality-summary", "Quality aggregation summary"),
@@ -85,6 +88,7 @@ export async function readMcpResource(services: AppServices, uri: string): Promi
   if (uri === "state://summary") return services.stateSummary.execute();
   if (uri === "events://recent") return services.events.execute(20);
   if (uri === "queue://active") return services.queueOverview.execute();
+  if (uri === "queue://dead-letter") return services.queueOverview.listDeadLetters();
   if (uri === "learnings://recent") return services.learningQuery.list();
   if (uri === "retro://summary") return services.retro.execute();
   if (uri === "quality://summary") return services.quality.execute();
@@ -112,8 +116,11 @@ export async function readMcpResource(services: AppServices, uri: string): Promi
 
 export async function callMcpTool(services: AppServices, name: string, args: Record<string, unknown>): Promise<McpToolExecution> {
   switch (name) {
-    case "submit_command":
-      return mutation(await services.commands.execute(args as unknown as CommandRequest), commandResources());
+    case "submit_command": {
+      const command = await services.commands.execute(args as unknown as CommandRequest);
+      await enqueueQueuedCommand(services, command);
+      return mutation(command, commandResources());
+    }
     case "issue_session":
       return mutation(await services.sessions.issue(args as unknown as IssueSessionInput), ["sessions://active", "state://summary"]);
     case "acquire_lease":
@@ -140,14 +147,27 @@ export async function callMcpTool(services: AppServices, name: string, args: Rec
       return mutation(await services.alerts.markRead(String(args.alertId)), ["alerts://current", "alerts://log"]);
     case "dismiss_alert":
       return mutation(await services.alerts.dismiss(String(args.alertId)), ["alerts://current", "alerts://log"]);
-    case "approve_run":
-      return mutation(await services.commandLifecycle.approve(String(args.commandId)), commandResources());
+    case "approve_run": {
+      const command = await services.commandLifecycle.approve(String(args.commandId));
+      await enqueueQueuedCommand(services, command);
+      return mutation(command, commandResources());
+    }
     case "reject_run":
       return mutation(await services.commandLifecycle.reject(String(args.commandId), optionalString(args.reason)), commandResources());
-    case "retry_run":
-      return mutation(await services.commandLifecycle.retry(String(args.commandId)), commandResources());
+    case "retry_run": {
+      const command = await services.commandLifecycle.retry(String(args.commandId));
+      await enqueueQueuedCommand(services, command);
+      return mutation(command, commandResources());
+    }
     case "cancel_run":
       return mutation(await services.commandLifecycle.cancel(String(args.commandId), optionalString(args.reason)), commandResources());
+    case "requeue_dead_letter": {
+      const command = await services.commandLifecycle.retry(String(args.commandId));
+      await enqueueQueuedCommand(services, command);
+      return mutation(command, commandResources());
+    }
+    case "dismiss_dead_letter":
+      return mutation(await services.commandLifecycle.cancel(String(args.commandId), "dead_letter_dismissed"), commandResources());
     case "set_yolo_mode":
       return mutation(await services.yoloMode.set(args as any), ["state://summary", "quality://summary", "release-gate://summary"]);
     default:
@@ -156,7 +176,7 @@ export async function callMcpTool(services: AppServices, name: string, args: Rec
 }
 
 function commandResources(): string[] {
-  return ["state://summary", "events://recent", "queue://active", "quality://summary", "release-gate://summary", "alerts://current"];
+  return ["state://summary", "events://recent", "queue://active", "queue://dead-letter", "quality://summary", "release-gate://summary", "alerts://current"];
 }
 
 function missionResources(missionId: string): string[] {
@@ -245,4 +265,25 @@ function matchMissionUri(uri: string): { id: string; kind: "graph" | "live" | "w
 
 function optionalString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+async function enqueueQueuedCommand(services: AppServices, command: unknown): Promise<void> {
+  const record = command as {
+    commandId?: unknown;
+    status?: unknown;
+    latestReason?: unknown;
+    events?: Array<{ reason?: unknown }>;
+  };
+
+  if (record.status !== "queued" || typeof record.commandId !== "string") {
+    return;
+  }
+
+  const eventReason = record.events?.at(-1)?.reason;
+  const reason = typeof record.latestReason === "string"
+    ? record.latestReason
+    : typeof eventReason === "string"
+      ? eventReason
+      : undefined;
+  await services.queueDispatch.enqueueRetry(record.commandId, reason);
 }

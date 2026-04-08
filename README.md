@@ -37,6 +37,7 @@ tests/
 ## API Surfaces
 
 - `GET /healthz`
+- `GET /login`
 - `GET /app`
 - `GET /api/commands`
 - `POST /api/commands`
@@ -67,6 +68,10 @@ tests/
 - `POST /api/missions/:id/workers`
 - `POST /api/missions/:id/handoffs`
 - `GET /api/queue`
+- `GET /api/queue/summary`
+- `GET /api/queue/dlq`
+- `POST /api/queue/dlq/:id/requeue`
+- `POST /api/queue/dlq/:id/dismiss`
 - `GET /api/quality`
 - `GET /api/release-gate`
 - `GET,POST /api/learnings`
@@ -123,6 +128,8 @@ Key MCP resources and tools include:
 - `state://summary`
 - `quality://summary`
 - `release-gate://summary`
+- `queue://active`
+- `queue://dead-letter`
 - `alerts://current`
 - `alerts://log`
 - `learnings://recent`
@@ -139,8 +146,21 @@ Key MCP resources and tools include:
 - `capture_learning`
 - `read_alert`
 - `dismiss_alert`
+- `requeue_dead_letter`
+- `dismiss_dead_letter`
 
 SSE supports backlog drain, `Last-Event-ID` replay/resume, and long-lived `follow=1` fan-out streams.
+
+When `MCP_BROKER` is bound, MCP sessions, subscriptions, and SSE replay state are persisted through the broker Durable Object instead of an in-memory map.
+
+## Auth
+
+When any control-plane auth variable is configured, `/app`, `/api`, and `/mcp` require authentication.
+
+- Browser operators authenticate through `GET,POST /login` and receive a signed cookie
+- Bearer tokens support `viewer` and `operator` roles
+- `viewer` can read `/api` and `/mcp` resources but cannot mutate state
+- `operator` can use mutating `/api` endpoints, `/mcp/tools/*`, and JSON-RPC `tools/call`
 
 ## Operator Console
 
@@ -151,6 +171,10 @@ SSE supports backlog drain, `Last-Event-ID` replay/resume, and long-lived `follo
 - Connects to mission live WebSocket updates
 - Allows in-console alert read/dismiss actions
 - Allows in-console learning capture
+- Allows command approve, retry, reject, and cancel actions
+- Allows scoped approval creation and deletion
+- Shows DLQ/dead-letter commands with requeue and dismiss actions
+- Allows in-console YOLO mode toggling and logout
 
 ## Runtime Bindings
 
@@ -164,9 +188,17 @@ GitHub backing store settings:
 Cloudflare bindings:
 
 - `MISSION_ROOM` Durable Object binding
+- `MCP_BROKER` Durable Object binding
 - `CONTROL_QUEUE` Queue binding
 
-`wrangler.toml` includes these bindings and the `MissionRoomDurableObject` migration.
+Control-plane auth settings:
+
+- `CONTROL_PLANE_OPERATOR_TOKEN`
+- `CONTROL_PLANE_VIEWER_TOKEN`
+- `CONTROL_PLANE_APP_PASSWORD`
+- `CONTROL_PLANE_COOKIE_SECRET`
+
+`wrangler.toml` includes these bindings, queue DLQ settings, and the `MissionRoomDurableObject` plus `McpBrokerDurableObject` migrations.
 
 ## Validation
 
@@ -178,6 +210,6 @@ npm run build
 
 ## Current Status
 
-The current scope includes the interactive console shell, MCP JSON-RPC transport, follow-capable SSE, mission live room wiring, queue retry flow, alert lifecycle, learning capture, retro summary, release gate, and quality aggregation. Remaining work is operational hardening and product polish rather than missing core surfaces.
+The current scope includes auth-gated `/app` + `/api` + `/mcp`, MCP JSON-RPC transport with broker-backed session durability, follow-capable SSE, mission live room wiring, queue retry plus dead-letter operations, alert lifecycle, learning capture, retro summary, release gate, quality aggregation, and an operator console with command/approval/DLQ actions. Remaining work is external QA and deployment hardening rather than missing core platform surfaces.
 
 Repository hygiene is also normalized for the new structure: generated artifacts are ignored via `.gitignore`, `node_modules` is no longer intended to be versioned, and the old `src/` plus `runtime/` prototype tree has been removed.

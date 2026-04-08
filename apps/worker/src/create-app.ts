@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import { asControlPlaneError } from "../../../packages/shared/src/control-plane-error";
+import { createAuthMiddleware } from "./auth/auth-middleware";
+import { resolveAuthConfig } from "./auth/control-plane-auth";
 import { createAppRouter } from "./router/app-router";
 import { createApiRouter } from "./router/api-router";
 import { createHealthRouter } from "./router/health-router";
@@ -12,11 +14,13 @@ export function createApp(options?: {
 }): Hono<{ Bindings: WorkerEnv }> {
   const app = new Hono<{ Bindings: WorkerEnv }>();
   const services = options?.services ?? createServices(options?.env);
+  const auth = resolveAuthConfig(options?.env);
 
-  app.route("/", createAppRouter(services));
+  app.use("*", createAuthMiddleware(auth));
+  app.route("/", createAppRouter(services, auth));
   app.route("/", createHealthRouter());
   app.route("/api", createApiRouter(services, options?.env));
-  app.route("/mcp", createMcpRouter(services));
+  app.route("/mcp", createMcpRouter(services, options?.env));
 
   app.onError((error, context) => {
     const controlPlaneError = asControlPlaneError(error);

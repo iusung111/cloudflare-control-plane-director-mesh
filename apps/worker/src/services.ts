@@ -28,8 +28,13 @@ export interface WorkerEnv {
   GITHUB_REPO?: string;
   GITHUB_TOKEN?: string;
   GITHUB_BRANCH?: string;
+  CONTROL_PLANE_OPERATOR_TOKEN?: string;
+  CONTROL_PLANE_VIEWER_TOKEN?: string;
+  CONTROL_PLANE_APP_PASSWORD?: string;
+  CONTROL_PLANE_COOKIE_SECRET?: string;
   CONTROL_QUEUE?: Queue<import("../../../packages/contracts/src").ControlQueueMessage>;
   MISSION_ROOM?: DurableObjectNamespace;
+  MCP_BROKER?: DurableObjectNamespace;
 }
 
 export interface AppServices {

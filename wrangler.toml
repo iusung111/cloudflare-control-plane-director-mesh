@@ -6,9 +6,17 @@ compatibility_date = "2024-01-01"
 name = "MISSION_ROOM"
 class_name = "MissionRoomDurableObject"
 
+[[durable_objects.bindings]]
+name = "MCP_BROKER"
+class_name = "McpBrokerDurableObject"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["MissionRoomDurableObject"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["McpBrokerDurableObject"]
 
 [[queues.producers]]
 binding = "CONTROL_QUEUE"
@@ -27,3 +35,7 @@ retry_delay = 30
 # GITHUB_REPO = "your-repo"
 # GITHUB_TOKEN = "your-github-token"
 # GITHUB_BRANCH = "master" (Must be explicitly configured)
+# CONTROL_PLANE_OPERATOR_TOKEN = "operator-bearer-token"
+# CONTROL_PLANE_VIEWER_TOKEN = "viewer-bearer-token"
+# CONTROL_PLANE_APP_PASSWORD = "browser-login-password"
+# CONTROL_PLANE_COOKIE_SECRET = "signed-cookie-secret"

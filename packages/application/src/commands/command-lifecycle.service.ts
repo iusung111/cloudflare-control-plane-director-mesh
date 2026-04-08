@@ -45,6 +45,18 @@ export class CommandLifecycleService {
     return this.requireCommand(commandId);
   }
 
+  async fail(commandId: string, reason = "retry_exhausted"): Promise<CommandRecord> {
+    const command = await this.requireCommand(commandId);
+    if (command.status === "completed" || command.status === "cancelled") {
+      throw new ControlPlaneError(409, "command_fail_not_allowed");
+    }
+    if (command.status === "failed" && command.latestReason === reason) {
+      return command;
+    }
+
+    return this.transition(commandId, "COMMAND_FAILED", "failed", reason);
+  }
+
   async reject(commandId: string, reason = "rejected_by_operator"): Promise<CommandRecord> {
     return this.transition(commandId, "COMMAND_REJECTED", "rejected", reason);
   }
@@ -55,8 +67,8 @@ export class CommandLifecycleService {
 
   private async transition(
     commandId: string,
-    type: "COMMAND_REJECTED" | "COMMAND_CANCELLED",
-    status: "rejected" | "cancelled",
+    type: "COMMAND_REJECTED" | "COMMAND_CANCELLED" | "COMMAND_FAILED",
+    status: "rejected" | "cancelled" | "failed",
     reason: string,
   ): Promise<CommandRecord> {
     const command = await this.requireCommand(commandId);
