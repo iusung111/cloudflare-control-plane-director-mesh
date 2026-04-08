@@ -13,8 +13,9 @@
   "payload": {
     "note": "github app cutover smoke"
   },
-  "status": "emitted",
-  "attemptCount": 0,
+  "status": "completed",
+  "attemptCount": 1,
   "createdAt": "2026-04-08T16:51:29.066Z",
-  "updatedAt": "2026-04-08T16:51:29.066Z"
+  "updatedAt": "2026-04-08T16:51:29.066Z",
+  "latestReason": "executed_inline"
 }
