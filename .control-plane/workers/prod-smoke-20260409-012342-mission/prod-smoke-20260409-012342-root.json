@@ -1,0 +1,13 @@
+{
+  "missionId": "prod-smoke-20260409-012342-mission",
+  "workerId": "prod-smoke-20260409-012342-root",
+  "role": "operator",
+  "phase": "qa",
+  "status": "running",
+  "title": "Smoke Root",
+  "summary": "Root smoke worker",
+  "progress": 25,
+  "startedAt": "2026-04-08T16:23:59.154Z",
+  "updatedAt": "2026-04-08T16:23:59.154Z",
+  "lastHeartbeatAt": "2026-04-08T16:23:59.154Z"
+}
