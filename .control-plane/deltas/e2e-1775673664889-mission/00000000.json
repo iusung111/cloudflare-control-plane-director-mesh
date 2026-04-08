@@ -1,0 +1,19 @@
+{
+  "type": "mission.snapshot",
+  "graph": {
+    "mission": {
+      "missionId": "e2e-1775673664889-mission",
+      "title": "E2E e2e-1775673664889",
+      "repoKey": "iusung111/cloudflare-control-plane-director-mesh",
+      "env": "prod",
+      "phase": "review",
+      "status": "active",
+      "ownerActor": "e2e-operator",
+      "createdAt": "2026-04-08T18:41:09.892Z",
+      "updatedAt": "2026-04-08T18:41:09.892Z"
+    },
+    "workers": [],
+    "edges": [],
+    "handoffs": []
+  }
+}
